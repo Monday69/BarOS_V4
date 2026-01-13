@@ -5,7 +5,7 @@ Système de distribution de cocktails automatisé sur Raspberry Pi
 
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from backend.database import Base, engine, get_db, User, Ingredient, Recipe, RecipeStep
+from backend.database import Base, engine, get_db, User, Ingredient, Recipe, RecipeIngredient
 from backend.routers import cocktails
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -163,19 +163,19 @@ async def setup_fake_data(db: Session = Depends(get_db)):
     
     # Création des étapes de la recette
     steps = [
-        RecipeStep(
+        RecipeIngredient(
             recipe_id=cuba_libre.id,
             ingredient_id=rhum.id,
             volume_ml=50.0,
             order=1
         ),
-        RecipeStep(
+        RecipeIngredient(
             recipe_id=cuba_libre.id,
             ingredient_id=coca.id,
             volume_ml=150.0,
             order=2
         ),
-        RecipeStep(
+        RecipeIngredient(
             recipe_id=cuba_libre.id,
             ingredient_id=citron.id,
             volume_ml=10.0,

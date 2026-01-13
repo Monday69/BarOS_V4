@@ -5,7 +5,7 @@ BarOS V4 - Routes pour la gestion des cocktails
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from backend.database import get_db, Recipe, RecipeStep, Ingredient
+from backend.database import get_db, Recipe, RecipeIngredient, Ingredient
 from backend.hardware.gpio_manager import gpio_manager
 from backend.logic.fluid_physics import FluidPhysics
 from backend.logic.color_mixer import ColorMixer
@@ -29,9 +29,9 @@ async def pour_recipe_steps(recipe_id: int, db: Session):
         return
     
     # Récupérer les étapes triées par ordre
-    steps = db.query(RecipeStep).filter(
-        RecipeStep.recipe_id == recipe_id
-    ).order_by(RecipeStep.order).all()
+    steps = db.query(RecipeIngredient).filter(
+        RecipeIngredient.recipe_id == recipe_id
+    ).order_by(RecipeIngredient.order).all()
     
     if not steps:
         print(f"[Cocktails] Aucune étape trouvée pour la recette {recipe_id}")
@@ -120,7 +120,7 @@ async def pour_cocktail(
         raise HTTPException(status_code=404, detail=f"Recette {recipe_id} non trouvée")
     
     # Vérifier que la recette a des étapes
-    steps = db.query(RecipeStep).filter(RecipeStep.recipe_id == recipe_id).count()
+    steps = db.query(RecipeIngredient).filter(RecipeIngredient.recipe_id == recipe_id).count()
     if steps == 0:
         raise HTTPException(
             status_code=400,
@@ -345,3 +345,32 @@ def refill_ingredient(ingredient_id: int, db: Session = Depends(get_db)):
     ingredient.current_volume_ml = ingredient.max_volume_ml
     db.commit()
     return {"message": f"{ingredient.name} rempli à 100% ({ingredient.max_volume_ml}ml)"}
+
+@router.put("/pumps/{pump_id}/assign/{ingredient_id}")
+def assign_ingredient_to_pump(pump_id: int, ingredient_id: int, db: Session = Depends(get_db)):
+    """
+    Change la bouteille branchée sur une pompe (Drag & Drop).
+    Exemple: On met 'Red Bull' (qui était en réserve) sur la Pompe 12.
+    """
+    # 1. L'ingrédient qu'on veut mettre (ex: Red Bull)
+    new_ingredient = db.query(Ingredient).filter(Ingredient.id == ingredient_id).first()
+    if not new_ingredient:
+        raise HTTPException(status_code=404, detail="Ingrédient introuvable")
+
+    # 2. Ce qu'il y a actuellement dans la pompe (ex: Lait de Coco)
+    current_in_pump = db.query(Ingredient).filter(Ingredient.pump_id == pump_id).first()
+    
+    # 3. On débranche l'ancien (Retour en réserve)
+    if current_in_pump:
+        current_in_pump.pump_id = None
+        current_in_pump.is_available = False # Devient indisponible en automatique
+        
+    # 4. On branche le nouveau
+    new_ingredient.pump_id = pump_id
+    new_ingredient.is_available = True
+    # On suppose qu'on installe une bouteille pleine (ou on garde le volume précédent si c'était déjà utilisé)
+    if new_ingredient.current_volume_ml is None or new_ingredient.current_volume_ml < 100:
+        new_ingredient.current_volume_ml = new_ingredient.max_volume_ml 
+    
+    db.commit()
+    return {"message": f"Pompe {pump_id} chargée avec : {new_ingredient.name}"}
