@@ -1,0 +1,23 @@
+# BarOS V4 - Dépendances Python
+# Installation: pip install -r requirements.txt
+
+# Framework web FastAPI
+fastapi>=0.104.0
+
+# Serveur ASGI pour FastAPI
+uvicorn[standard]>=0.24.0
+
+# ORM pour la base de données
+sqlalchemy>=2.0.0
+
+# Validation de données
+pydantic>=2.5.0
+
+# Support pour les formulaires multipart
+python-multipart>=0.0.6
+
+# Bibliothèque GPIO pour Raspberry Pi
+# Note: RPi.GPIO est spécifique à Linux/Raspberry Pi
+# Pour le développement sur Windows/Mac, un mock sera nécessaire
+RPi.GPIO>=0.7.1; sys_platform == 'linux'
+
