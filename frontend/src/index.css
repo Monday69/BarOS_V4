@@ -13,3 +13,24 @@ body {
   width: 0px;
   background: transparent;
 }
+
+/* Cache la scrollbar pour Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Cache la scrollbar pour IE, Edge and Firefox */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Appliquer ça à tout le corps de l'appli */
+body {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+  background-color: #0a0a0a; /* Fond noir profond pour éviter les flashs blancs */
+}
+body::-webkit-scrollbar {
+  display: none;
+}

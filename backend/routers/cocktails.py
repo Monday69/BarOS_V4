@@ -1,376 +1,225 @@
 """
-BarOS V4 - Routes pour la gestion des cocktails
+BarOS V4 - Routes cocktails optimisées
+Séparation claire route/service/database
 """
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy.orm import Session
+from typing import List, Optional
 from pydantic import BaseModel
-from backend.database import get_db, Recipe, RecipeIngredient, Ingredient
-from backend.hardware.gpio_manager import gpio_manager
-from backend.logic.fluid_physics import FluidPhysics
-from backend.logic.color_mixer import ColorMixer
 import asyncio
+import time
+
+from backend.database import get_db
+from backend.services.cocktail_service import CocktailService
+from backend.services.recipe_service import RecipeService
+from backend.middleware.auth import require_auth
 
 router = APIRouter(tags=["cocktails"])
 
+# Services instanciés
+cocktail_service = CocktailService()
+recipe_service = RecipeService()
 
-async def pour_recipe_steps(recipe_id: int, db: Session):
-    """
-    Fonction de fond pour verser tous les ingrédients d'une recette
-    
-    Args:
-        recipe_id: ID de la recette à préparer
-        db: Session de base de données
-    """
-    # Récupérer la recette et ses étapes
-    recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
-    if not recipe:
-        print(f"[Cocktails] Recette {recipe_id} non trouvée")
-        return
-    
-    # Récupérer les étapes triées par ordre
-    steps = db.query(RecipeIngredient).filter(
-        RecipeIngredient.recipe_id == recipe_id
-    ).order_by(RecipeIngredient.order).all()
-    
-    if not steps:
-        print(f"[Cocktails] Aucune étape trouvée pour la recette {recipe_id}")
-        return
-    
-    print(f"[Cocktails] Début de la préparation de '{recipe.name}' ({len(steps)} étapes)")
-    
-    # Pour chaque étape, verser l'ingrédient
-    for step in steps:
-        # Recharger l'ingrédient depuis la DB pour avoir les volumes à jour
-        ingredient = db.query(Ingredient).filter(
-            Ingredient.id == step.ingredient_id
-        ).first()
-        
-        if not ingredient:
-            print(f"[Cocktails] Ingrédient non trouvé pour l'étape {step.id}")
-            continue
-        
-        if not ingredient.pump_id:
-            print(f"[Cocktails] Aucune pompe configurée pour l'ingrédient '{ingredient.name}'")
-            continue
-        
-        # Vérifier que le volume disponible est suffisant
-        if ingredient.current_volume_ml < step.volume_ml:
-            print(f"[Cocktails] Volume insuffisant pour {ingredient.name}: {ingredient.current_volume_ml}ml disponible, {step.volume_ml}ml demandé")
-            continue
-        
-        # Calculer la durée en utilisant la physique des fluides (Torricelli)
-        try:
-            duration = FluidPhysics.calculate_pour_duration(
-                target_volume_ml=step.volume_ml,
-                current_volume_ml=ingredient.current_volume_ml,
-                max_volume_ml=ingredient.max_volume_ml
-            )
-        except ValueError as e:
-            print(f"[Cocktails] Erreur de calcul de durée pour {ingredient.name}: {e}")
-            continue
-        
-        print(f"[Cocktails] Versement: {ingredient.name} ({step.volume_ml}ml) via pompe {ingredient.pump_id} pendant {duration:.2f}s (volume restant: {ingredient.current_volume_ml}ml)")
-        
-        try:
-            # Verser l'ingrédient
-            await gpio_manager.pour_ingredient(ingredient.pump_id, duration)
-            
-            # Mettre à jour le volume dans la base de données
-            ingredient.current_volume_ml -= step.volume_ml
-            # S'assurer que le volume ne devient pas négatif
-            if ingredient.current_volume_ml < 0:
-                ingredient.current_volume_ml = 0.0
-            
-            db.commit()
-            print(f"[Cocktails] Volume mis à jour pour {ingredient.name}: {ingredient.current_volume_ml}ml restant")
-            
-        except Exception as e:
-            print(f"[Cocktails] Erreur lors du versement de {ingredient.name}: {e}")
-            db.rollback()
-            # Continuer avec les autres ingrédients même en cas d'erreur
-    
-    print(f"[Cocktails] Préparation de '{recipe.name}' terminée")
+# ============================================================================
+# MODÈLES DE RÉPONSE OPTIMISÉS
+# ============================================================================
 
-@router.get("/")
-def get_recipes(db: Session = Depends(get_db)):
-    """Récupère la liste de toutes les recettes disponibles"""
-    return db.query(Recipe).all()
+class CocktailResponse(BaseModel):
+    id: int
+    name: str
+    price: float
+    image_url: Optional[str]
+    ingredients: List[str]
+    total_volume_ml: float
+    difficulty: int
+    estimated_time: float
+    is_available: bool
 
-@router.post("/pour/{recipe_id}")
-async def pour_cocktail(
-    recipe_id: int,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+class CocktailDetailResponse(CocktailResponse):
+    ingredient_details: List[dict]
+    preparation_steps: List[str]
+    compatible_with_stock: bool
+
+# ============================================================================
+# ENDPOINTS OPTIMISÉS
+# ============================================================================
+
+@router.get("/", response_model=List[CocktailResponse])
+async def get_cocktails(
+    db: Session = Depends(get_db),
+    available_only: bool = Query(True, description="Filtrer les recettes disponibles"),
+    category: Optional[str] = Query(None, description="Filtrer par catégorie"),
+    max_price: Optional[float] = Query(None, gt=0),
+    limit: int = Query(50, le=100),
+    offset: int = Query(0, ge=0)
 ):
     """
-    Lance la préparation d'un cocktail en arrière-plan
-    
-    Args:
-        recipe_id: ID de la recette à préparer
-        background_tasks: Tâches de fond FastAPI
-        db: Session de base de données
-    
-    Returns:
-        Message de confirmation que la préparation a été lancée
+    Liste des cocktails avec pagination et filtres
     """
-    # Vérifier que la recette existe
-    recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
-    if not recipe:
-        raise HTTPException(status_code=404, detail=f"Recette {recipe_id} non trouvée")
-    
-    # Vérifier que la recette a des étapes
-    steps = db.query(RecipeIngredient).filter(RecipeIngredient.recipe_id == recipe_id).count()
-    if steps == 0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"La recette '{recipe.name}' n'a aucune étape configurée"
-        )
-    
-    # Ajouter la tâche de versement en arrière-plan
-    background_tasks.add_task(pour_recipe_steps, recipe_id, db)
-    
-    return {
-        "message": f"Préparation de '{recipe.name}' lancée",
-        "recipe_id": recipe_id,
-        "recipe_name": recipe.name,
-        "status": "started"
-    }
-
-
-class MixColorRequest(BaseModel):
-    """Modèle de requête pour le mélange de couleurs"""
-    hex_code: str  # Ex: "#00FF00"
-    volume_ml: float
-
-
-async def pour_color_ingredients(cyan_ml: float, magenta_ml: float, yellow_ml: float, db: Session):
-    """
-    Fonction de fond pour verser les colorants en parallèle
-    
-    Args:
-        cyan_ml: Volume de cyan à verser
-        magenta_ml: Volume de magenta à verser
-        yellow_ml: Volume de yellow à verser
-        db: Session de base de données
-    """
-    # Chercher les ingrédients par leur nom
-    cyan = db.query(Ingredient).filter(Ingredient.name == "Cyan").first()
-    magenta = db.query(Ingredient).filter(Ingredient.name == "Magenta").first()
-    yellow = db.query(Ingredient).filter(Ingredient.name == "Yellow").first()
-    
-    tasks = []
-    ingredients_to_update = []
-    
-    # Préparer les tâches de versement pour chaque colorant
-    if cyan_ml > 0:
-        if not cyan:
-            print("[Cocktails] Ingrédient 'Cyan' non trouvé")
-        elif not cyan.pump_id:
-            print("[Cocktails] Aucune pompe configurée pour 'Cyan'")
-        elif cyan.current_volume_ml < cyan_ml:
-            print(f"[Cocktails] Volume insuffisant pour Cyan: {cyan.current_volume_ml}ml disponible, {cyan_ml}ml demandé")
-        else:
-            try:
-                duration = FluidPhysics.calculate_pour_duration(
-                    target_volume_ml=cyan_ml,
-                    current_volume_ml=cyan.current_volume_ml,
-                    max_volume_ml=cyan.max_volume_ml
-                )
-                tasks.append(gpio_manager.pour_ingredient(cyan.pump_id, duration))
-                ingredients_to_update.append((cyan, cyan_ml))
-                print(f"[Cocktails] Versement Cyan: {cyan_ml}ml via pompe {cyan.pump_id} pendant {duration:.2f}s")
-            except Exception as e:
-                print(f"[Cocktails] Erreur de calcul pour Cyan: {e}")
-    
-    if magenta_ml > 0:
-        if not magenta:
-            print("[Cocktails] Ingrédient 'Magenta' non trouvé")
-        elif not magenta.pump_id:
-            print("[Cocktails] Aucune pompe configurée pour 'Magenta'")
-        elif magenta.current_volume_ml < magenta_ml:
-            print(f"[Cocktails] Volume insuffisant pour Magenta: {magenta.current_volume_ml}ml disponible, {magenta_ml}ml demandé")
-        else:
-            try:
-                duration = FluidPhysics.calculate_pour_duration(
-                    target_volume_ml=magenta_ml,
-                    current_volume_ml=magenta.current_volume_ml,
-                    max_volume_ml=magenta.max_volume_ml
-                )
-                tasks.append(gpio_manager.pour_ingredient(magenta.pump_id, duration))
-                ingredients_to_update.append((magenta, magenta_ml))
-                print(f"[Cocktails] Versement Magenta: {magenta_ml}ml via pompe {magenta.pump_id} pendant {duration:.2f}s")
-            except Exception as e:
-                print(f"[Cocktails] Erreur de calcul pour Magenta: {e}")
-    
-    if yellow_ml > 0:
-        if not yellow:
-            print("[Cocktails] Ingrédient 'Yellow' non trouvé")
-        elif not yellow.pump_id:
-            print("[Cocktails] Aucune pompe configurée pour 'Yellow'")
-        elif yellow.current_volume_ml < yellow_ml:
-            print(f"[Cocktails] Volume insuffisant pour Yellow: {yellow.current_volume_ml}ml disponible, {yellow_ml}ml demandé")
-        else:
-            try:
-                duration = FluidPhysics.calculate_pour_duration(
-                    target_volume_ml=yellow_ml,
-                    current_volume_ml=yellow.current_volume_ml,
-                    max_volume_ml=yellow.max_volume_ml
-                )
-                tasks.append(gpio_manager.pour_ingredient(yellow.pump_id, duration))
-                ingredients_to_update.append((yellow, yellow_ml))
-                print(f"[Cocktails] Versement Yellow: {yellow_ml}ml via pompe {yellow.pump_id} pendant {duration:.2f}s")
-            except Exception as e:
-                print(f"[Cocktails] Erreur de calcul pour Yellow: {e}")
-    
-    if not tasks:
-        print("[Cocktails] Aucune tâche de versement à exécuter")
-        return
-    
-    # Exécuter tous les versements en parallèle
-    print(f"[Cocktails] Début du mélange de couleurs ({len(tasks)} colorants en parallèle)")
     try:
-        await asyncio.gather(*tasks)
+        cocktails = await recipe_service.get_recipes(
+            db=db,
+            available_only=available_only,
+            category=category,
+            max_price=max_price,
+            limit=limit,
+            offset=offset
+        )
         
-        # Mettre à jour les volumes dans la base de données
-        for ingredient, volume_poured in ingredients_to_update:
-            ingredient.current_volume_ml -= volume_poured
-            if ingredient.current_volume_ml < 0:
-                ingredient.current_volume_ml = 0.0
+        # Ajout métadonnées dans les headers
+        total_count = await recipe_service.get_total_count(db, available_only)
         
-        db.commit()
-        print("[Cocktails] Mélange de couleurs terminé et volumes mis à jour")
+        return cocktails
         
     except Exception as e:
-        print(f"[Cocktails] Erreur lors du mélange de couleurs: {e}")
-        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
 
-
-@router.post("/mix_color")
-async def mix_color(
-    request: MixColorRequest,
-    background_tasks: BackgroundTasks,
+@router.get("/{cocktail_id}", response_model=CocktailDetailResponse)
+async def get_cocktail_detail(
+    cocktail_id: int,
+    check_stock: bool = Query(False, description="Vérifier compatibilité avec stocks"),
     db: Session = Depends(get_db)
 ):
     """
-    Mélange une couleur en versant les colorants CMY en parallèle
-    
-    Args:
-        request: Requête contenant hex_code et volume_ml
-        background_tasks: Tâches de fond FastAPI
-        db: Session de base de données
-    
-    Returns:
-        Message de confirmation que le mélange a été lancé
+    Détails d'un cocktail spécifique
     """
-    # Validation du code hexadécimal
-    hex_code = request.hex_code.strip().upper()
-    if not hex_code.startswith("#"):
-        hex_code = "#" + hex_code
-    
-    if len(hex_code) != 7:
-        raise HTTPException(
-            status_code=400,
-            detail="Le code hexadécimal doit être au format #RRGGBB (ex: #00FF00)"
-        )
-    
     try:
-        # Conversion hex vers RGB
-        r = int(hex_code[1:3], 16)
-        g = int(hex_code[3:5], 16)
-        b = int(hex_code[5:7], 16)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail="Code hexadécimal invalide"
-        )
-    
-    # Calcul des volumes CMY
-    try:
-        volumes = ColorMixer.rgb_to_pump_volumes(r, g, b, request.volume_ml)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    
-    # Vérifier que les ingrédients existent
-    cyan = db.query(Ingredient).filter(Ingredient.name == "Cyan").first()
-    magenta = db.query(Ingredient).filter(Ingredient.name == "Magenta").first()
-    yellow = db.query(Ingredient).filter(Ingredient.name == "Yellow").first()
-    
-    missing = []
-    if volumes["cyan_ml"] > 0 and not cyan:
-        missing.append("Cyan")
-    if volumes["magenta_ml"] > 0 and not magenta:
-        missing.append("Magenta")
-    if volumes["yellow_ml"] > 0 and not yellow:
-        missing.append("Yellow")
-    
-    if missing:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Ingrédients manquants: {', '.join(missing)}"
-        )
-    
-    # Ajouter la tâche de mélange en arrière-plan
-    background_tasks.add_task(
-        pour_color_ingredients,
-        volumes["cyan_ml"],
-        volumes["magenta_ml"],
-        volumes["yellow_ml"],
-        db
-    )
-    
-    return {
-        "message": f"Mélange de couleur {hex_code} lancé",
-        "hex_code": hex_code,
-        "rgb": {"r": r, "g": g, "b": b},
-        "volumes": volumes,
-        "total_volume_ml": request.volume_ml,
-        "status": "started"
-    }
-    
-# --- GESTION DES STOCKS ---
-
-@router.get("/ingredients")
-def get_ingredients(db: Session = Depends(get_db)):
-    """Récupère l'état de tous les réservoirs"""
-    return db.query(Ingredient).all()
-
-@router.put("/ingredients/{ingredient_id}/refill")
-def refill_ingredient(ingredient_id: int, db: Session = Depends(get_db)):
-    """Remplit une bouteille au maximum"""
-    ingredient = db.query(Ingredient).filter(Ingredient.id == ingredient_id).first()
-    if not ingredient:
-        raise HTTPException(status_code=404, detail="Ingrédient introuvable")
-    
-    ingredient.current_volume_ml = ingredient.max_volume_ml
-    db.commit()
-    return {"message": f"{ingredient.name} rempli à 100% ({ingredient.max_volume_ml}ml)"}
-
-@router.put("/pumps/{pump_id}/assign/{ingredient_id}")
-def assign_ingredient_to_pump(pump_id: int, ingredient_id: int, db: Session = Depends(get_db)):
-    """
-    Change la bouteille branchée sur une pompe (Drag & Drop).
-    Exemple: On met 'Red Bull' (qui était en réserve) sur la Pompe 12.
-    """
-    # 1. L'ingrédient qu'on veut mettre (ex: Red Bull)
-    new_ingredient = db.query(Ingredient).filter(Ingredient.id == ingredient_id).first()
-    if not new_ingredient:
-        raise HTTPException(status_code=404, detail="Ingrédient introuvable")
-
-    # 2. Ce qu'il y a actuellement dans la pompe (ex: Lait de Coco)
-    current_in_pump = db.query(Ingredient).filter(Ingredient.pump_id == pump_id).first()
-    
-    # 3. On débranche l'ancien (Retour en réserve)
-    if current_in_pump:
-        current_in_pump.pump_id = None
-        current_in_pump.is_available = False # Devient indisponible en automatique
+        cocktail = await recipe_service.get_recipe_detail(cocktail_id, db)
         
-    # 4. On branche le nouveau
-    new_ingredient.pump_id = pump_id
-    new_ingredient.is_available = True
-    # On suppose qu'on installe une bouteille pleine (ou on garde le volume précédent si c'était déjà utilisé)
-    if new_ingredient.current_volume_ml is None or new_ingredient.current_volume_ml < 100:
-        new_ingredient.current_volume_ml = new_ingredient.max_volume_ml 
-    
-    db.commit()
-    return {"message": f"Pompe {pump_id} chargée avec : {new_ingredient.name}"}
+        if not cocktail:
+            raise HTTPException(status_code=404, detail="Cocktail non trouvé")
+        
+        # Vérification stocks si demandée
+        if check_stock:
+            stock_compatible = await cocktail_service.check_recipe_stock(cocktail_id, db)
+            cocktail["compatible_with_stock"] = stock_compatible
+        
+        return cocktail
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
+
+@router.post("/{cocktail_id}/pour")
+@require_auth(roles=["user", "admin"])
+async def pour_cocktail(
+    cocktail_id: int,
+    background_tasks: BackgroundTasks,
+    priority: int = Query(1, ge=1, le=3),
+    user_nfc: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Préparer un cocktail spécifique
+    """
+    try:
+        # Vérification préalable
+        validation = await cocktail_service.validate_recipe(cocktail_id, db)
+        
+        if not validation["valid"]:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Recette non valide",
+                    "errors": validation["errors"]
+                }
+            )
+        
+        # Création de la séquence
+        sequence = await cocktail_service.create_pour_sequence(
+            recipe_id=cocktail_id,
+            priority=priority,
+            user_nfc=user_nfc,
+            db=db
+        )
+        
+        # Lancement en arrière-plan
+        background_tasks.add_task(
+            cocktail_service.execute_sequence,
+            sequence["id"],
+            db
+        )
+        
+        return {
+            "status": "started",
+            "sequence_id": sequence["id"],
+            "estimated_time": sequence["estimated_time"],
+            "cocktail_name": sequence["cocktail_name"],
+            "steps": len(sequence["steps"])
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
+
+@router.get("/{cocktail_id}/status")
+async def get_cocktail_status(
+    cocktail_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    État de préparation d'un cocktail
+    """
+    try:
+        status = await cocktail_service.get_preparation_status(cocktail_id, db)
+        return status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
+
+@router.post("/{cocktail_id}/cancel")
+@require_auth(roles=["admin"])
+async def cancel_cocktail(
+    cocktail_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Annuler la préparation d'un cocktail (admin seulement)
+    """
+    try:
+        result = await cocktail_service.cancel_preparation(cocktail_id, db)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur serveur: {str(e)}")
+
+# ============================================================================
+# ENDPOINTS BATCH/ADMIN
+# ============================================================================
+
+@router.post("/batch/import")
+@require_auth(roles=["admin"])
+async def import_cocktails_batch(
+    url: Optional[str] = None,
+    file_content: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Importation batch de cocktails (admin)
+    """
+    try:
+        result = await recipe_service.import_batch(url, file_content, db)
+        return {
+            "status": "success",
+            "imported": result["imported"],
+            "updated": result["updated"],
+            "failed": result["failed"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur import: {str(e)}")
+
+@router.get("/stats/popular")
+async def get_popular_cocktails(
+    days: int = Query(7, le=365),
+    limit: int = Query(10, le=50),
+    db: Session = Depends(get_db)
+):
+    """
+    Statistiques des cocktails populaires
+    """
+    try:
+        stats = await recipe_service.get_popularity_stats(days, limit, db)
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur statistiques: {str(e)}")

@@ -1,0 +1,441 @@
+[
+  {
+    "name": "Canchanchara",
+    "image_url": "/cocktails/Rhum_Blanc/canchanchara.png",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Rhum Blanc", "volume": 60 },
+      { "name": "Jus de Citron", "volume": 15 },
+      { "name": "Eau", "volume": 50 }
+    ]
+  },
+  {
+    "name": "Mojito",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/mojito-2.jpg",
+    "price": 8.50,
+    "ingredients": [
+      { "name": "Rhum Blanc", "volume": 40 },
+      { "name": "Jus de Citron", "volume": 20 },
+      { "name": "Sirop de Canne", "volume": 20 },
+      { "name": "Eau Gazeuse", "volume": 100 }
+    ]
+  },
+  {
+    "name": "Piña Colada",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-pina-colada.jpg",
+    "price": 9.00,
+    "ingredients": [
+      { "name": "Rhum Blanc", "volume": 40 },
+      { "name": "Jus d'Ananas", "volume": 60 },
+      { "name": "Lait de Coco", "volume": 60 },
+      { "name": "Sirop de Canne", "volume": 20 }
+    ]
+  },
+  {
+    "name": "Ti Punch",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2021/01/Ti-punch.jpg",
+    "price": 7.00,
+    "ingredients": [
+      { "name": "Rhum Blanc", "volume": 60 },
+      { "name": "Sirop de Canne", "volume": 20 },
+      { "name": "Jus de Citron", "volume": 10 }
+    ]
+  },
+  {
+    "name": "Tropical Kamasutra",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-tropical-kamasutra.jpg",
+    "price": 9.50,
+    "ingredients": [
+      { "name": "Rhum Blanc", "volume": 40 },
+      { "name": "Sirop de Canne", "volume": 15 },
+      { "name": "Jus d'Ananas", "volume": 100 }
+    ]
+  },
+  {
+    "name": "Daïquiri",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/136_daiquiri.jpg",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Rhum Blanc", "volume": 60 },
+      { "name": "Jus de Citron", "volume": 40 },
+      { "name": "Sirop de Canne", "volume": 20 }
+    ]
+  },
+  {
+    "name": "Navy Grog",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-navy-grog.jpg",
+    "price": 10.00,
+    "ingredients": [
+      { "name": "Rhum Blanc", "volume": 30 },
+      { "name": "Rhum Ambré", "volume": 30 },
+      { "name": "Jus de Citron", "volume": 15 }
+    ]
+  },
+  {
+    "name": "Mojito Colada",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2023/02/mojito-colada.jpg",
+    "price": 9.00,
+    "ingredients": [
+      { "name": "Rhum Blanc", "volume": 40 },
+      { "name": "Jus de Citron", "volume": 20 },
+      { "name": "Lait de Coco", "volume": 60 }
+    ]
+  },
+  {
+    "name": "Amour",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-amour.jpg",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Rhum Blanc", "volume": 40 },
+      { "name": "Jus de Citron", "volume": 40 }
+    ]
+  },
+  {
+    "name": "Kraken Cola",
+    "image_url": "https://m.media-amazon.com/images/S/aplus-media/vc/0b7696c2-498c-443e-a77c-6556f8f553f1.__CR0,0,300,300_PT0_SX300_V1___.jpg",
+    "price": 8.50,
+    "ingredients": [
+      { "name": "Rhum Ambré", "volume": 40 },
+      { "name": "Coca-Cola", "volume": 120 },
+      { "name": "Jus de Citron", "volume": 20 }
+    ]
+  },
+  {
+    "name": "Santo Libre",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-santo-libre.jpg",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Rhum Ambré", "volume": 60 },
+      { "name": "Limonade", "volume": 150 },
+      { "name": "Jus de Citron", "volume": 10 }
+    ]
+  },
+  {
+    "name": "Old Swizzle",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-old-swizzle.jpg",
+    "price": 9.00,
+    "ingredients": [
+      { "name": "Rhum Ambré", "volume": 60 },
+      { "name": "Jus de Citron", "volume": 30 },
+      { "name": "Eau Gazeuse", "volume": 60 }
+    ]
+  },
+  {
+    "name": "Dark Mojito",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2021/01/Dark-mojito.jpg",
+    "price": 9.00,
+    "ingredients": [
+      { "name": "Rhum Ambré", "volume": 40 },
+      { "name": "Sirop de Canne", "volume": 20 },
+      { "name": "Jus de Citron", "volume": 20 },
+      { "name": "Eau Gazeuse", "volume": 100 }
+    ]
+  },
+  {
+    "name": "Honey Panama",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-honey-panama.jpg",
+    "price": 8.50,
+    "ingredients": [
+      { "name": "Rhum Ambré", "volume": 40 },
+      { "name": "Sirop de Canne", "volume": 10 },
+      { "name": "Jus de Citron", "volume": 20 }
+    ]
+  },
+  {
+    "name": "Cuba Libre",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/05/cocktail-cuba-libre.jpg",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Rhum Ambré", "volume": 40 },
+      { "name": "Jus de Citron", "volume": 20 },
+      { "name": "Coca-Cola", "volume": 120 }
+    ]
+  },
+  {
+    "name": "Perfect Colada",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-perfect-colada.jpg",
+    "price": 9.50,
+    "ingredients": [
+      { "name": "Rhum Ambré", "volume": 40 },
+      { "name": "Jus d'Ananas", "volume": 60 },
+      { "name": "Lait de Coco", "volume": 40 }
+    ]
+  },
+  {
+    "name": "Polia Lime et Cola",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2023/04/AdobeStock_308678250-scaled.jpeg",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Vodka", "volume": 50 },
+      { "name": "Coca-Cola", "volume": 120 },
+      { "name": "Jus de Citron", "volume": 10 }
+    ]
+  },
+  {
+    "name": "Caipiroska",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2022/04/Recette-cocktail-Caipiroska.jpg",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Vodka", "volume": 50 },
+      { "name": "Sirop de Canne", "volume": 20 },
+      { "name": "Jus de Citron", "volume": 20 }
+    ]
+  },
+  {
+    "name": "Sikko",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-sikko.jpg",
+    "price": 9.00,
+    "ingredients": [
+      { "name": "Vodka", "volume": 40 },
+      { "name": "Jus de Citron", "volume": 60 },
+      { "name": "Sirop de Canne", "volume": 15 }
+    ]
+  },
+  {
+    "name": "Santorini Sunrise",
+    "image_url": "https://www.colruyt.be/content/dam/colruyt/recettes/1000/1000-1100/1002/santorini-sunrise-1002-kw19-12-link.jpg",
+    "price": 8.50,
+    "ingredients": [
+      { "name": "Vodka", "volume": 50 },
+      { "name": "Jus d'Ananas", "volume": 100 }
+    ]
+  },
+  {
+    "name": "Vodka Red Bull",
+    "image_url": "https://www.1001cocktails.com/images/cocktails/1001cocktails/vodka-red-bull.jpg",
+    "price": 9.00,
+    "ingredients": [
+      { "name": "Vodka", "volume": 50 },
+      { "name": "Red Bull", "volume": 150 }
+    ]
+  },
+  {
+    "name": "Cîroc Mojito Solo",
+    "image_url": "https://www.1001cocktails.com/images/cocktails/1001cocktails/ciroc-mojito-solo.jpg",
+    "price": 10.00,
+    "ingredients": [
+      { "name": "Vodka", "volume": 40 },
+      { "name": "Jus de Citron", "volume": 20 },
+      { "name": "Sirop de Canne", "volume": 20 },
+      { "name": "Jus d'Ananas", "volume": 40 },
+      { "name": "Eau Gazeuse", "volume": 50 }
+    ]
+  },
+  {
+    "name": "Coconut Cola",
+    "image_url": "https://www.drinkdirect.ch/media/image/5f/8b/4c/coconut-cola.jpg",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Vodka", "volume": 40 },
+      { "name": "Lait de Coco", "volume": 40 },
+      { "name": "Coca-Cola", "volume": 120 }
+    ]
+  },
+  {
+    "name": "Jager Bomb",
+    "image_url": "https://www.1001cocktails.com/images/cocktails/1001cocktails/jager-bomb.jpg",
+    "price": 9.00,
+    "ingredients": [
+      { "name": "Jägermeister", "volume": 40 },
+      { "name": "Red Bull", "volume": 150 }
+    ]
+  },
+  {
+    "name": "Jager Cola",
+    "image_url": "https://images.unsplash.com/photo-1629247657037-77af3c457d5e?auto=format&fit=crop&q=80",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Jägermeister", "volume": 40 },
+      { "name": "Coca-Cola", "volume": 120 }
+    ]
+  },
+  {
+    "name": "Jäger Ginger",
+    "image_url": "https://kissmychef.com/wp-content/uploads/2020/09/JAGER-GINGER-1-1.jpg",
+    "price": 9.50,
+    "ingredients": [
+      { "name": "Jägermeister", "volume": 40 },
+      { "name": "Ginger Beer", "volume": 120 },
+      { "name": "Jus de Citron", "volume": 10 }
+    ]
+  },
+  {
+    "name": "Jägermeister Mule",
+    "image_url": "https://www.jagermeister.com/media/5807/jager-mule-stage.png",
+    "price": 9.50,
+    "ingredients": [
+      { "name": "Jägermeister", "volume": 50 },
+      { "name": "Ginger Beer", "volume": 120 },
+      { "name": "Jus de Citron", "volume": 20 }
+    ]
+  },
+  {
+    "name": "Jägerinha",
+    "image_url": "https://tendercrate.com/wp-content/uploads/2021/04/jagerinha.jpg",
+    "price": 8.50,
+    "ingredients": [
+      { "name": "Jägermeister", "volume": 60 },
+      { "name": "Sirop de Canne", "volume": 10 },
+      { "name": "Jus de Citron", "volume": 30 }
+    ]
+  },
+  {
+    "name": "Calm Before Storm",
+    "image_url": "https://sweegen.com/wp-content/uploads/2021/01/calm-before-storm-cocktail.jpg",
+    "price": 10.00,
+    "ingredients": [
+      { "name": "Jägermeister", "volume": 45 },
+      { "name": "Whisky", "volume": 45 }
+    ]
+  },
+  {
+    "name": "Shot de Jägermeister",
+    "image_url": "https://images.unsplash.com/photo-1572116469696-9587215f2faa?auto=format&fit=crop&q=80",
+    "price": 4.00,
+    "ingredients": [
+      { "name": "Jägermeister", "volume": 40 }
+    ]
+  },
+  {
+    "name": "Whisky Highball",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-whisky-highball.jpg",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Whisky", "volume": 50 },
+      { "name": "Limonade", "volume": 150 }
+    ]
+  },
+  {
+    "name": "Barton's Cola",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-the-bartons-cola.jpg",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Whisky", "volume": 40 },
+      { "name": "Coca-Cola", "volume": 100 },
+      { "name": "Jus de Citron", "volume": 10 }
+    ]
+  },
+  {
+    "name": "Label Sour",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-label-sour.jpg",
+    "price": 8.50,
+    "ingredients": [
+      { "name": "Whisky", "volume": 40 },
+      { "name": "Jus de Citron", "volume": 20 },
+      { "name": "Sirop de Canne", "volume": 20 }
+    ]
+  },
+  {
+    "name": "Jock Collins",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-jock-collins.jpg",
+    "price": 8.50,
+    "ingredients": [
+      { "name": "Whisky", "volume": 40 },
+      { "name": "Jus de Citron", "volume": 20 },
+      { "name": "Sirop de Canne", "volume": 10 }
+    ]
+  },
+  {
+    "name": "London Collins",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-london-collins.jpg",
+    "price": 9.00,
+    "ingredients": [
+      { "name": "Whisky", "volume": 50 },
+      { "name": "Eau Gazeuse", "volume": 50 },
+      { "name": "Sirop de Canne", "volume": 20 },
+      { "name": "Jus de Citron", "volume": 10 }
+    ]
+  },
+  {
+    "name": "Mellow Five",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-mellow-five.jpg",
+    "price": 9.50,
+    "ingredients": [
+      { "name": "Whisky", "volume": 20 },
+      { "name": "Jus d'Ananas", "volume": 40 },
+      { "name": "Jus de Citron", "volume": 10 }
+    ]
+  },
+  {
+    "name": "Whisky Coca",
+    "image_url": "https://images.unsplash.com/photo-1570605658667-8898124233e7?auto=format&fit=crop&q=80",
+    "price": 8.00,
+    "ingredients": [
+      { "name": "Whisky", "volume": 50 },
+      { "name": "Coca-Cola", "volume": 100 }
+    ]
+  },
+  {
+    "name": "Whisky Red Bull",
+    "image_url": "https://images.unsplash.com/photo-1541544181051-447a1758c345?auto=format&fit=crop&q=80",
+    "price": 9.00,
+    "ingredients": [
+      { "name": "Whisky", "volume": 50 },
+      { "name": "Red Bull", "volume": 120 }
+    ]
+  },
+
+{
+    "name": "Pastis",
+    "image_url": "https://images.unsplash.com/photo-1596466983050-c6517a264a02?auto=format&fit=crop&q=80",
+    "price": 3.00,
+    "ingredients": [
+      { "name": "Pastis", "volume": 30 },
+      { "name": "Eau", "volume": 150 }
+    ]
+  },
+  {
+    "name": "Perroquet",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/05/cocktail-perroquet.jpg",
+    "price": 3.50,
+    "ingredients": [
+      { "name": "Pastis", "volume": 40 },
+      { "name": "Sirop de Menthe", "volume": 10 },
+      { "name": "Eau", "volume": 150 }
+    ]
+  },
+  {
+    "name": "Tomate",
+    "image_url": "https://www.1001cocktails.com/images/cocktails/1001cocktails/tomate.jpg",
+    "price": 3.50,
+    "ingredients": [
+      { "name": "Pastis", "volume": 40 },
+      { "name": "Sirop de Grenadine", "volume": 10 },
+      { "name": "Eau", "volume": 150 }
+    ]
+  },
+  {
+    "name": "Mauresque",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/05/cocktail-mauresque.jpg",
+    "price": 3.50,
+    "ingredients": [
+      { "name": "Pastis", "volume": 40 },
+      { "name": "Sirop d'Orgeat", "volume": 10 },
+      { "name": "Eau", "volume": 150 }
+    ]
+  },
+  {
+    "name": "Colorant Cyan (Base)",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/2/25/Cyan_color_swatch.png",
+    "price": 5.00,
+    "ingredients": [
+      { "name": "Colorant Cyan", "volume": 100 }
+    ]
+  },
+  {
+    "name": "Colorant Magenta (Base)",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/7/71/Magenta_color_swatch.png",
+    "price": 5.00,
+    "ingredients": [
+      { "name": "Colorant Magenta", "volume": 100 }
+    ]
+  },
+  {
+    "name": "Colorant Jaune (Base)",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/9/9e/Yellow_color_swatch.png",
+    "price": 5.00,
+    "ingredients": [
+      { "name": "Colorant Jaune", "volume": 100 }
+    ]
+  }
+]

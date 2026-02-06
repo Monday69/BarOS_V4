@@ -1,14 +1,15 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Wine, FlaskConical, Settings, Power } from 'lucide-react';
+import { LayoutDashboard, Wine, FlaskConical, Settings, Power, Box } from 'lucide-react';
 
 const Layout = () => {
   const location = useLocation();
 
   const navigation = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'La Carte', path: '/menu', icon: Wine },
+    { name: 'La Carte', path: '/bar', icon: Wine },
     { name: 'Labo', path: '/lab', icon: FlaskConical },
+    { name: 'Machine 3D', path: '/test3d', icon: Box },
     { name: 'Réglages', path: '/settings', icon: Settings },
   ];
 
