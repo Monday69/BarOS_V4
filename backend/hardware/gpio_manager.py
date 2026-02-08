@@ -1,124 +1,74 @@
 """
-BarOS V4 - Gestionnaire GPIO pour le contrôle des pompes
-Gère les interactions avec les GPIO du Raspberry Pi ou simule en mode mock
+BarOS V4 - GPIO Manager (Mode Simulation/Mock)
+Chemin : backend/hardware/gpio_manager.py
+Gère les pompes. Si pas de Raspberry Pi détecté, simule les actions.
 """
-
+import time
 import asyncio
+import logging
 
-# Tentative d'import de RPi.GPIO
+logger = logging.getLogger(__name__)
+
+# Tente d'importer RPi.GPIO, sinon passe en mode MOCK
 try:
-    import RPi.GPIO as GPIO
+    import RPi.GPIO as GPIO # type: ignore
     GPIO_AVAILABLE = True
-except ImportError:
+except (ImportError, RuntimeError):
     GPIO_AVAILABLE = False
-    print("[GPIO] RPi.GPIO non disponible, utilisation du mode mock")
 
-
-class MockGPIO:
-    """
-    Classe mock pour simuler RPi.GPIO lors du développement sur Windows/Mac
-    """
-    BCM = "BCM"
-    BOARD = "BOARD"
-    OUT = "OUT"
-    IN = "IN"
-    HIGH = 1
-    LOW = 0
-    
-    @staticmethod
-    def setmode(mode):
-        print(f"[MockGPIO] setmode({mode})")
-    
-    @staticmethod
-    def setup(pin, mode):
-        print(f"[MockGPIO] setup(pin={pin}, mode={mode})")
-    
-    @staticmethod
-    def output(pin, state):
-        state_str = "HIGH" if state == 1 else "LOW"
-        print(f"[MockGPIO] output(pin={pin}, state={state_str})")
-    
-    @staticmethod
-    def cleanup():
-        print("[MockGPIO] cleanup()")
-
+# Mapping des Pins (BCM) -> Numéro Pompe
+# J'ai ajouté 9, 10, 11, 12 avec des pins BCM standards (26, 19, 13, 6)
+PUMP_MAPPING = {
+    1: 18, 2: 23, 3: 24, 4: 25,
+    5: 12, 6: 16, 7: 20, 8: 21,
+    9: 26, 10: 19, 11: 13, 12: 6
+}
 
 class GPIOManager:
-    """
-    Gestionnaire GPIO pour contrôler les pompes de distribution
-    """
     
-    # Mapping des pump_id vers les numéros de GPIO (à adapter selon votre configuration)
-    # Exemple : pump_id 1 -> GPIO 18, pump_id 2 -> GPIO 23, etc.
-    PUMP_GPIO_MAPPING = {
-        1: 18,
-        2: 23,
-        3: 24,
-        4: 25,
-        5: 12,
-        6: 16,
-        7: 20,
-        8: 21,
-    }
-    
-    def __init__(self):
-        """
-        Initialise le gestionnaire GPIO
-        """
+    @staticmethod
+    def setup():
+        """Initialise les GPIOs"""
         if GPIO_AVAILABLE:
-            self.gpio = GPIO
-            self.gpio.setmode(GPIO.BCM)
-            print("[GPIOManager] Mode GPIO réel activé")
+            try:
+                GPIO.setmode(GPIO.BCM)
+                for pin in PUMP_MAPPING.values():
+                    GPIO.setup(pin, GPIO.OUT)
+                    GPIO.output(pin, GPIO.HIGH) # Relais souvent inversés (HIGH = OFF)
+                logger.info(f"✅ [GPIO] Initialisé sur Raspberry Pi ({len(PUMP_MAPPING)} pompes)")
+            except Exception as e:
+                logger.error(f"❌ [GPIO] Erreur init: {e}")
         else:
-            self.gpio = MockGPIO()
-            self.gpio.setmode(MockGPIO.BCM)
-            print("[GPIOManager] Mode GPIO mock activé")
-        
-        # Configuration initiale des pins
-        self._setup_pumps()
-    
-    def _setup_pumps(self):
-        """
-        Configure tous les pins des pompes en mode OUTPUT
-        """
-        for pump_id, gpio_pin in self.PUMP_GPIO_MAPPING.items():
-            self.gpio.setup(gpio_pin, self.gpio.OUT)
-            self.gpio.output(gpio_pin, self.gpio.LOW)
-            print(f"[GPIOManager] Pompe {pump_id} configurée sur GPIO {gpio_pin}")
-    
-    async def pour_ingredient(self, pump_id: int, duration: float):
-        """
-        Active une pompe pendant une durée donnée
-        
-        Args:
-            pump_id: ID de la pompe (1-8)
-            duration: Durée en secondes pendant laquelle la pompe doit fonctionner
-        """
-        if pump_id not in self.PUMP_GPIO_MAPPING:
-            raise ValueError(f"Pump ID {pump_id} non configuré. Pumps disponibles: {list(self.PUMP_GPIO_MAPPING.keys())}")
-        
-        gpio_pin = self.PUMP_GPIO_MAPPING[pump_id]
-        
-        print(f"[GPIOManager] Démarrage pompe {pump_id} (GPIO {gpio_pin}) pour {duration}s")
-        
-        # Mettre le pin à HIGH
-        self.gpio.output(gpio_pin, self.gpio.HIGH)
-        
-        try:
-            # Attendre la durée spécifiée
-            await asyncio.sleep(duration)
-        finally:
-            # Remettre le pin à LOW
-            self.gpio.output(gpio_pin, self.gpio.LOW)
-            print(f"[GPIOManager] Arrêt pompe {pump_id} (GPIO {gpio_pin})")
-    
-    def cleanup(self):
-        """
-        Nettoie les ressources GPIO
-        """
-        self.gpio.cleanup()
-        print("[GPIOManager] GPIO cleanup effectué")
+            logger.warning(f"⚠️ [GPIO] Mode SIMULATION ({len(PUMP_MAPPING)} pompes configurées)")
 
+    @staticmethod
+    def cleanup():
+        if GPIO_AVAILABLE:
+            GPIO.cleanup()
 
-# Instance globale du gestionnaire GPIO
-gpio_manager = GPIOManager()
+    @staticmethod
+    async def pour(pump_id: int, duration: float):
+        """
+        Active une pompe pendant une durée précise.
+        Fonction Asynchrone (ne bloque pas le serveur).
+        """
+        if pump_id not in PUMP_MAPPING:
+            logger.error(f"[GPIO] Pompe {pump_id} inconnue (Vérifiez PUMP_MAPPING)")
+            return
+
+        pin = PUMP_MAPPING[pump_id]
+        
+        # --- DÉBUT DU VERSEMENT ---
+        if GPIO_AVAILABLE:
+            GPIO.output(pin, GPIO.LOW) # LOW = ON (Souvent)
+        else:
+            print(f"💦 [SIMULATION] Pompe {pump_id} (Pin {pin}) DÉMARRÉE pour {duration:.2f}s")
+
+        # Attente non bloquante
+        await asyncio.sleep(duration)
+
+        # --- FIN DU VERSEMENT ---
+        if GPIO_AVAILABLE:
+            GPIO.output(pin, GPIO.HIGH) # HIGH = OFF
+        else:
+            print(f"🛑 [SIMULATION] Pompe {pump_id} ARRÊTÉE.")
