@@ -1,74 +1,101 @@
 """
-BarOS V4 - GPIO Manager (Mode Simulation/Mock)
+BarOS V4 - GPIO Manager (Configurable, Async & Sécurisé)
 Chemin : backend/hardware/gpio_manager.py
-Gère les pompes. Si pas de Raspberry Pi détecté, simule les actions.
 """
-import time
 import asyncio
 import logging
+import json
+import os
 
-logger = logging.getLogger(__name__)
+# Configuration du logger pour avoir les mêmes logs que FastAPI
+logger = logging.getLogger("uvicorn.error")
 
-# Tente d'importer RPi.GPIO, sinon passe en mode MOCK
 try:
     import RPi.GPIO as GPIO # type: ignore
     GPIO_AVAILABLE = True
 except (ImportError, RuntimeError):
     GPIO_AVAILABLE = False
 
-# Mapping des Pins (BCM) -> Numéro Pompe
-# J'ai ajouté 9, 10, 11, 12 avec des pins BCM standards (26, 19, 13, 6)
-PUMP_MAPPING = {
-    1: 18, 2: 23, 3: 24, 4: 25,
-    5: 12, 6: 16, 7: 20, 8: 21,
-    9: 26, 10: 19, 11: 13, 12: 6
-}
-
 class GPIOManager:
-    
-    @staticmethod
-    def setup():
+    # On stockera le mapping ici après chargement
+    PUMP_MAPPING = {} 
+
+    @classmethod
+    def _load_config(cls):
+        """Charge la configuration depuis config.json"""
+        try:
+            # Chemin absolu vers backend/config.json
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_path = os.path.join(base_dir, "config.json")
+            
+            with open(config_path, 'r') as f:
+                data = json.load(f)
+                # Conversion des clés "1" (str) en 1 (int)
+                cls.PUMP_MAPPING = {int(k): v for k, v in data.get("pump_mapping", {}).items()}
+                logger.info(f"📂 Configuration chargée : {len(cls.PUMP_MAPPING)} pompes")
+        except Exception as e:
+            logger.error(f"⚠️ Erreur chargement config.json : {e}")
+            logger.warning("Utilisation du mapping de secours (Fallback)")
+            # Mapping de secours si le fichier est introuvable
+            cls.PUMP_MAPPING = {1: 18, 2: 23, 3: 24, 4: 25}
+
+    @classmethod
+    def setup(cls):
         """Initialise les GPIOs"""
+        # 1. Charger la config
+        cls._load_config()
+
+        # 2. Initialiser le hardware
         if GPIO_AVAILABLE:
             try:
                 GPIO.setmode(GPIO.BCM)
-                for pin in PUMP_MAPPING.values():
+                for pin in cls.PUMP_MAPPING.values():
                     GPIO.setup(pin, GPIO.OUT)
-                    GPIO.output(pin, GPIO.HIGH) # Relais souvent inversés (HIGH = OFF)
-                logger.info(f"✅ [GPIO] Initialisé sur Raspberry Pi ({len(PUMP_MAPPING)} pompes)")
+                    GPIO.output(pin, GPIO.HIGH) # Relais OFF (souvent inversé)
+                logger.info(f"✅ [GPIO] Initialisé sur Raspberry Pi")
             except Exception as e:
                 logger.error(f"❌ [GPIO] Erreur init: {e}")
         else:
-            logger.warning(f"⚠️ [GPIO] Mode SIMULATION ({len(PUMP_MAPPING)} pompes configurées)")
+            logger.warning(f"⚠️ [GPIO] Mode SIMULATION ({len(cls.PUMP_MAPPING)} pompes)")
 
-    @staticmethod
-    def cleanup():
+    @classmethod
+    def cleanup(cls):
         if GPIO_AVAILABLE:
             GPIO.cleanup()
 
-    @staticmethod
-    async def pour(pump_id: int, duration: float):
+    @classmethod
+    async def pour(cls, pump_id: int, duration: float):
         """
-        Active une pompe pendant une durée précise.
-        Fonction Asynchrone (ne bloque pas le serveur).
+        Active une pompe de manière asynchrone (Non-Bloquant).
+        Inclut une sécurité anti-inondation.
         """
-        if pump_id not in PUMP_MAPPING:
-            logger.error(f"[GPIO] Pompe {pump_id} inconnue (Vérifiez PUMP_MAPPING)")
+        # Sécurité 1 : Pompe inconnue
+        if pump_id not in cls.PUMP_MAPPING:
+            logger.error(f"[GPIO] Pompe {pump_id} non configurée")
             return
 
-        pin = PUMP_MAPPING[pump_id]
+        # Sécurité 2 : Durée excessive (Anti-Inondation)
+        if duration > 30.0:
+            logger.warning(f"⚠️ SÉCURITÉ : Durée {duration}s plafonnée à 30s pour pompe {pump_id}")
+            duration = 30.0
         
-        # --- DÉBUT DU VERSEMENT ---
-        if GPIO_AVAILABLE:
-            GPIO.output(pin, GPIO.LOW) # LOW = ON (Souvent)
-        else:
-            print(f"💦 [SIMULATION] Pompe {pump_id} (Pin {pin}) DÉMARRÉE pour {duration:.2f}s")
+        if duration <= 0:
+            return
 
-        # Attente non bloquante
+        pin = cls.PUMP_MAPPING[pump_id]
+        
+        # --- DÉBUT (ON) ---
+        if GPIO_AVAILABLE:
+            GPIO.output(pin, GPIO.LOW) # ON
+        else:
+            # On utilise logger.info pour que ce soit propre dans le terminal
+            logger.info(f"💦 [SIMU] Pompe {pump_id} (Pin {pin}) ON pendant {duration:.2f}s")
+
+        # Pause non bloquante
         await asyncio.sleep(duration)
 
-        # --- FIN DU VERSEMENT ---
+        # --- FIN (OFF) ---
         if GPIO_AVAILABLE:
-            GPIO.output(pin, GPIO.HIGH) # HIGH = OFF
+            GPIO.output(pin, GPIO.HIGH) # OFF
         else:
-            print(f"🛑 [SIMULATION] Pompe {pump_id} ARRÊTÉE.")
+            logger.info(f"🛑 [SIMU] Pompe {pump_id} OFF")

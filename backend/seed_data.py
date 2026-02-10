@@ -1,5 +1,5 @@
 """
-Script d'initialisation : Ingrédients + Recettes (depuis JSON)
+Script d'initialisation : Ingrédients + Recettes (Version Nutrition)
 Lancer avec : python -m backend.seed_data
 """
 import json
@@ -7,36 +7,40 @@ import os
 from backend.database import SessionLocal
 from backend.models import Ingredient, Recipe, RecipeIngredient
 
-# Liste des ingrédients de base (Sauvegarde au cas où)
+# Liste enrichie avec DATA NUTRITIONNELLE (Moyennes approximatives)
 INITIAL_INGREDIENTS = [
-    {"name": "Vodka", "type": "alcool"},
-    {"name": "Rhum Blanc", "type": "alcool"},
-    {"name": "Rhum Ambré", "type": "alcool"}, # Ajouté car présent dans tes recettes
-    {"name": "Gin", "type": "alcool"},
-    {"name": "Tequila", "type": "alcool"},
-    {"name": "Whisky", "type": "alcool"},
-    {"name": "Jägermeister", "type": "alcool"},
-    {"name": "Pastis", "type": "alcool"},
+    # ALCOOLS
+    {"name": "Vodka", "type": "alcool", "alc": 40.0, "sugar": 0.0, "kcal": 231.0, "brand": "Absolut"},
+    {"name": "Rhum Blanc", "type": "alcool", "alc": 37.5, "sugar": 0.0, "kcal": 220.0, "brand": "Havana Club"},
+    {"name": "Rhum Ambré", "type": "alcool", "alc": 40.0, "sugar": 0.5, "kcal": 230.0, "brand": "Captain Morgan"},
+    {"name": "Gin", "type": "alcool", "alc": 40.0, "sugar": 0.0, "kcal": 260.0, "brand": "Bombay Sapphire"},
+    {"name": "Tequila", "type": "alcool", "alc": 38.0, "sugar": 0.0, "kcal": 210.0, "brand": "Jose Cuervo"},
+    {"name": "Whisky", "type": "alcool", "alc": 40.0, "sugar": 0.0, "kcal": 250.0, "brand": "Jack Daniels"},
+    {"name": "Jägermeister", "type": "alcool", "alc": 35.0, "sugar": 11.0, "kcal": 250.0, "brand": "Jägermeister"},
+    {"name": "Pastis", "type": "alcool", "alc": 45.0, "sugar": 3.0, "kcal": 275.0, "brand": "Ricard"},
     
-    {"name": "Coca-Cola", "type": "diluant"},
-    {"name": "Jus d'Orange", "type": "diluant"},
-    {"name": "Jus de Citron", "type": "diluant"},
-    {"name": "Jus d'Ananas", "type": "diluant"},
-    {"name": "Eau", "type": "diluant"},
-    {"name": "Eau Gazeuse", "type": "diluant"},
-    {"name": "Limonade", "type": "diluant"},
-    {"name": "Ginger Beer", "type": "diluant"},
-    {"name": "Red Bull", "type": "diluant"},
-    {"name": "Lait de Coco", "type": "diluant"},
+    # DILUANTS (SOFT)
+    {"name": "Coca-Cola", "type": "diluant", "alc": 0.0, "sugar": 10.6, "kcal": 42.0, "brand": "Coca-Cola"},
+    {"name": "Jus d'Orange", "type": "diluant", "alc": 0.0, "sugar": 9.0, "kcal": 45.0, "brand": "Tropicana"},
+    {"name": "Jus de Citron", "type": "diluant", "alc": 0.0, "sugar": 2.5, "kcal": 29.0, "brand": "Pulco"},
+    {"name": "Jus d'Ananas", "type": "diluant", "alc": 0.0, "sugar": 13.0, "kcal": 53.0, "brand": "Joker"},
+    {"name": "Eau", "type": "diluant", "alc": 0.0, "sugar": 0.0, "kcal": 0.0, "brand": "Cristaline"},
+    {"name": "Eau Gazeuse", "type": "diluant", "alc": 0.0, "sugar": 0.0, "kcal": 0.0, "brand": "Perrier"},
+    {"name": "Limonade", "type": "diluant", "alc": 0.0, "sugar": 8.0, "kcal": 35.0, "brand": "Sprite"},
+    {"name": "Ginger Beer", "type": "diluant", "alc": 0.0, "sugar": 13.0, "kcal": 55.0, "brand": "Fever Tree"},
+    {"name": "Red Bull", "type": "diluant", "alc": 0.0, "sugar": 11.0, "kcal": 46.0, "brand": "Red Bull"},
+    {"name": "Lait de Coco", "type": "diluant", "alc": 0.0, "sugar": 3.0, "kcal": 180.0, "brand": "Suzy Wan"},
     
-    {"name": "Sirop de Grenadine", "type": "sirop"},
-    {"name": "Sirop de Canne", "type": "sirop"},
-    {"name": "Sirop de Menthe", "type": "sirop"},
-    {"name": "Sirop d'Orgeat", "type": "sirop"},
+    # SIROPS
+    {"name": "Sirop de Grenadine", "type": "sirop", "alc": 0.0, "sugar": 78.0, "kcal": 320.0, "brand": "Monin"},
+    {"name": "Sirop de Canne", "type": "sirop", "alc": 0.0, "sugar": 85.0, "kcal": 340.0, "brand": "Canadou"},
+    {"name": "Sirop de Menthe", "type": "sirop", "alc": 0.0, "sugar": 75.0, "kcal": 300.0, "brand": "Teisseire"},
+    {"name": "Sirop d'Orgeat", "type": "sirop", "alc": 0.0, "sugar": 80.0, "kcal": 330.0, "brand": "Monin"},
     
-    {"name": "Colorant Cyan", "type": "colorant"},
-    {"name": "Colorant Magenta", "type": "colorant"},
-    {"name": "Colorant Jaune", "type": "colorant"},
+    # COLORANTS
+    {"name": "Colorant Cyan", "type": "colorant", "alc": 0.0, "sugar": 0.0, "kcal": 0.0},
+    {"name": "Colorant Magenta", "type": "colorant", "alc": 0.0, "sugar": 0.0, "kcal": 0.0},
+    {"name": "Colorant Jaune", "type": "colorant", "alc": 0.0, "sugar": 0.0, "kcal": 0.0},
 ]
 
 def load_recipes_from_json():
@@ -49,7 +53,7 @@ def load_recipes_from_json():
 
 def seed():
     db = SessionLocal()
-    print("🌱 Démarrage du peuplement de la base...")
+    print("🌱 Démarrage du peuplement Nutritionnel...")
     
     try:
         # 1. CRÉATION DES INGRÉDIENTS
@@ -61,21 +65,24 @@ def seed():
                     name=item["name"], 
                     type=item["type"],
                     current_volume_ml=1000.0,
-                    is_available=True
+                    is_available=True,
+                    # NOUVEAUX CHAMPS
+                    brand=item.get("brand"),
+                    alcohol_degree=item.get("alc", 0.0),
+                    sugar_g_per_100ml=item.get("sugar", 0.0),
+                    kcal_per_100ml=item.get("kcal", 0.0)
                 )
                 db.add(new_ing)
-                print(f"  + Créé : {item['name']}")
+                print(f"  + Créé : {item['name']} ({item.get('kcal',0)} kcal/100ml)")
         db.commit()
 
-        # 2. CRÉATION DES RECETTES (Depuis JSON)
+        # 2. CRÉATION DES RECETTES
         print("\n--- Recettes ---")
         recipes_data = load_recipes_from_json()
         
         for r_data in recipes_data:
-            # Vérifier si la recette existe
             recipe = db.query(Recipe).filter(Recipe.name == r_data["name"]).first()
             if not recipe:
-                # Création recette
                 recipe = Recipe(
                     name=r_data["name"],
                     image_url=r_data.get("image_url"),
@@ -83,12 +90,10 @@ def seed():
                     is_available=True
                 )
                 db.add(recipe)
-                db.flush() # Pour avoir l'ID tout de suite
+                db.flush()
                 
-                # Ajout des liens ingrédients
                 for ing_link in r_data["ingredients"]:
                     ing_name = ing_link["name"]
-                    # Petits correctifs de noms si nécessaire (ex: "Sirop de sucre de canne" -> "Sirop de Canne")
                     if ing_name == "Sirop de Sucre de Canne": ing_name = "Sirop de Canne"
 
                     ing_db = db.query(Ingredient).filter(Ingredient.name == ing_name).first()
@@ -100,14 +105,14 @@ def seed():
                         )
                         db.add(ri)
                     else:
-                        print(f"  ⚠️ Ingrédient inconnu '{ing_name}' pour la recette '{recipe.name}'")
+                        print(f"  ⚠️ Ingrédient inconnu '{ing_name}'")
                 
-                print(f"  + Recette ajoutée : {recipe.name}")
+                print(f"  + Recette : {recipe.name}")
             else:
-                print(f"  = Existe déjà : {r_data['name']}")
+                print(f"  = Existe : {r_data['name']}")
 
         db.commit()
-        print("\n✅ Base de données initialisée avec succès !")
+        print("\n✅ Base de données V5 (Nutrition) prête !")
 
     except Exception as e:
         print(f"❌ Erreur : {e}")

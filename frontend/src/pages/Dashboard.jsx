@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { Wine, Activity, Zap, ArrowRight, Droplets } from 'lucide-react';
+// J'ai ajouté SettingsIcon ici directement pour que ce soit propre
+import { Wine, Activity, Zap, ArrowRight, Droplets, Settings as SettingsIcon } from 'lucide-react';
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -43,13 +44,16 @@ const Dashboard = () => {
           </p>
           
           <div className="pt-6 flex flex-wrap gap-4">
-            <Link to="/menu" className="px-8 py-4 bg-primary text-black font-bold rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:scale-105 active:scale-95">
+            {/* 👇 MODIFICATION 1 : Lien vers /bar */}
+            <Link to="/bar" className="px-8 py-4 bg-primary text-black font-bold rounded-xl hover:bg-amber-400 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:scale-105 active:scale-95">
               <Wine size={20} />
               Accéder à la Carte
             </Link>
+            
+            {/* 👇 MODIFICATION 2 : Renommé en Mode Couleur */}
             <Link to="/lab" className="px-8 py-4 bg-white/5 text-white font-bold rounded-xl hover:bg-white/10 transition-all flex items-center gap-2 border border-white/10">
               <Droplets size={20} />
-              Mode Manuel
+              Mode Couleur
             </Link>
           </div>
         </div>
@@ -95,7 +99,7 @@ const Dashboard = () => {
         <div className="bg-surface/50 p-6 rounded-2xl border border-white/5 hover:border-primary/20 transition-colors group">
           <div className="flex justify-between items-start mb-4">
             <div className="p-3 bg-primary/10 rounded-xl text-primary group-hover:scale-110 transition-transform">
-              <SettingsIcon size={24} /> {/* Note: Assure-toi d'importer Settings as SettingsIcon si besoin, ou utilise Zap */}
+              <SettingsIcon size={24} /> 
             </div>
             <span className="text-xs font-mono text-textMuted uppercase">Intégrité</span>
           </div>
@@ -107,8 +111,5 @@ const Dashboard = () => {
     </div>
   );
 };
-
-// Petit fix pour l'icône si SettingsIcon n'est pas importé
-import { Settings as SettingsIcon } from 'lucide-react';
 
 export default Dashboard;

@@ -1,10 +1,10 @@
 """
-BarOS V4 - Router Cocktails (CORRIGÉ POUR FRONTEND)
+BarOS V4 - Router Cocktails (Full Async + Nutrition V5)
 Chemin : backend/routers/cocktails.py
 """
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional, Any
+from typing import List, Optional
 from pydantic import BaseModel
 
 from backend.database import get_db, SessionLocal
@@ -16,25 +16,23 @@ router = APIRouter(tags=["cocktails"])
 cocktail_service = CocktailService()
 recipe_service = RecipeService()
 
-# --- WRAPPER TÂCHE DE FOND ---
-def execute_sequence_background(sequence_id: int):
-    """Crée une session DB indépendante pour la tâche."""
+# --- WRAPPER ASYNC ---
+async def execute_sequence_background(sequence_id: int):
+    """Crée une session DB et lance l'exécution async."""
     db = SessionLocal()
     try:
-        cocktail_service.execute_sequence_sync(sequence_id, db)
+        await cocktail_service.execute_sequence(sequence_id, db)
     except Exception as e:
         print(f"🔥 ERREUR CRITIQUE Tâche de fond: {e}")
     finally:
         db.close()
 
-# --- MODÈLES (API RESPONSE) ---
-# On redéfinit ici pour être sûr du format
+# --- MODÈLES ---
 class CocktailListResponse(BaseModel):
     id: int
     name: str
     price: float
     image_url: Optional[str] = None
-    # 👇 CRUCIAL : Une liste de strings simple pour que le .includes() du JS marche
     ingredients: List[str] 
     
     class Config:
@@ -50,37 +48,77 @@ async def get_cocktails(
     db: Session = Depends(get_db)
 ):
     recipes = await recipe_service.get_recipes(db, available_only, category, None, limit, offset)
-    
-    # Transformation manuelle pour garantir que les ingrédients sont des strings
     response = []
     for r in recipes:
-        # On extrait juste le nom de chaque ingrédient lié
         ing_names = [ri.ingredient.name for ri in r.recipe_ingredients]
-        
         response.append({
             "id": r.id,
             "name": r.name,
             "price": r.price,
             "image_url": r.image_url,
-            "ingredients": ing_names # ✅ Liste de strings ["Rhum", "Cola"]
+            "ingredients": ing_names
         })
-    
     return response
 
 @router.get("/{cocktail_id}")
 async def get_cocktail_detail(cocktail_id: int, db: Session = Depends(get_db)):
-    """Retourne le détail complet pour la page CocktailPage"""
+    """Retourne le détail complet + INFOS NUTRITIONNELLES (Calculées)"""
     r = await recipe_service.get_recipe_detail(cocktail_id, db)
     if not r: raise HTTPException(404, "Cocktail introuvable")
     
-    # On construit une réponse détaillée
     ing_details = []
+    
+    # --- CALCUL NUTRITIONNEL ---
+    total_vol = 0
+    total_alcohol_vol = 0
+    total_sugar_g = 0
+    total_kcal = 0
+    
+    print(f"\n🧪 Calcul Nutrition pour : {r.name}") # LOG DEBUG
+
     for ri in r.recipe_ingredients:
+        vol = ri.volume_ml
+        ing = ri.ingredient
+        
+        # Données de base pour le frontend
         ing_details.append({
-            "name": ri.ingredient.name,
-            "volume": ri.volume_ml
+            "name": ing.name,
+            "volume": vol,
+            "image_url": ing.image_url
         })
         
+        # Calculs pondérés
+        total_vol += vol
+        
+        # Alcool pur (ml) : Degré * Volume / 100
+        alc_vol = (ing.alcohol_degree * vol / 100)
+        total_alcohol_vol += alc_vol
+        
+        # Sucre (g) : g/100ml * Volume / 100
+        sugar = (ing.sugar_g_per_100ml * vol / 100)
+        total_sugar_g += sugar
+        
+        # Calories (kcal) : kcal/100ml * Volume / 100
+        kcal = (ing.kcal_per_100ml * vol / 100)
+        total_kcal += kcal
+        
+        # Affichage détail dans la console (Pour vérifier)
+        print(f"  - {ing.name} ({vol}ml) : {alc_vol:.1f}ml Alc | {sugar:.1f}g Sucre | {kcal:.0f} Kcal")
+
+    # Résultats finaux (Sécurisés contre div/0)
+    if total_vol > 0:
+        final_degree = (total_alcohol_vol / total_vol) * 100
+    else:
+        final_degree = 0
+
+    nutrition_info = {
+        "alcohol_degree": round(final_degree, 1),
+        "sugar_g": round(total_sugar_g, 1),
+        "kcal": round(total_kcal, 0)
+    }
+    
+    print(f"📊 TOTAL : {nutrition_info['alcohol_degree']}% Alc | {nutrition_info['sugar_g']}g Sucre | {nutrition_info['kcal']} Kcal\n")
+
     # Vérification stock
     compatible = await cocktail_service.check_recipe_stock(cocktail_id, db)
 
@@ -89,10 +127,13 @@ async def get_cocktail_detail(cocktail_id: int, db: Session = Depends(get_db)):
         "name": r.name,
         "price": r.price,
         "image_url": r.image_url,
-        "ingredients": ing_details, # Ici on veut le détail (nom + volume)
-        "total_volume_ml": sum(i["volume"] for i in ing_details),
+        "ingredients": ing_details,
+        "total_volume_ml": total_vol,
         "compatible_with_stock": compatible,
-        "estimated_time": len(ing_details) * 2 + sum(i["volume"] for i in ing_details) * 0.1
+        "estimated_time": len(ing_details) * 2 + total_vol * 0.1,
+        
+        # ✅ DATA NUTRITION ENVOYÉE AU FRONT
+        "nutrition": nutrition_info 
     }
 
 @router.post("/{cocktail_id}/pour")
@@ -101,14 +142,11 @@ async def pour_cocktail(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
-    # 1. Validation
     val = await cocktail_service.validate_recipe(cocktail_id, db)
     if not val["valid"]: raise HTTPException(400, detail=val["errors"][0])
 
-    # 2. Création (Pending)
     seq = await cocktail_service.create_pour_sequence(cocktail_id, 1, None, db)
 
-    # 3. Lancement
     background_tasks.add_task(execute_sequence_background, seq["id"])
 
     return {

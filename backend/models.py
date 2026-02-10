@@ -1,5 +1,5 @@
 """
-BarOS V4 - Modèles de base de données
+BarOS V4 - Modèles de base de données (Update Nutrition)
 Chemin : backend/models.py
 """
 from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime, Text
@@ -15,8 +15,16 @@ class Ingredient(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     type = Column(String)
-    alcohol_degree = Column(Float, default=0.0)
-    density = Column(Float, default=1.0)
+    
+    # --- DATA NUTRITIONNELLE & IDENTIFICATION (Le Yuka) ---
+    barcode = Column(String, nullable=True)       # Code EAN (ex: 5449000000996)
+    brand = Column(String, nullable=True)         # Marque (ex: Coca-Cola)
+    image_url = Column(String, nullable=True)     # Photo bouteille réelle
+    
+    alcohol_degree = Column(Float, default=0.0)   # % Alcool
+    density = Column(Float, default=1.0)          # Densité (g/ml)
+    sugar_g_per_100ml = Column(Float, default=0.0)# Sucre (g/100ml)
+    kcal_per_100ml = Column(Float, default=0.0)   # Calories (kcal/100ml)
     
     # Gestion Stock & Hardware
     current_volume_ml = Column(Float, default=0.0)
@@ -83,7 +91,7 @@ class PourStep(Base):
     sequence = relationship("PourSequence", back_populates="steps")
     ingredient = relationship("Ingredient", back_populates="pour_steps")
 
-# --- SCANNER (CELUI QUI MANQUAIT) ---
+# --- SCANNER CACHE ---
 
 class ScannedProduct(Base):
     __tablename__ = "scanned_products"

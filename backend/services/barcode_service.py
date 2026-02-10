@@ -1,5 +1,5 @@
 """
-BarOS V4 - Service Scanner (OpenFoodFacts)
+BarOS V4 - Service Scanner (OpenFoodFacts avec Cache)
 Chemin : backend/services/barcode_service.py
 """
 import httpx
@@ -14,7 +14,8 @@ class BarcodeService:
     async def scan_product(self, barcode: str, db: Session):
         """
         Cherche un produit par son code-barres.
-        D'abord en cache local (DB), sinon via l'API OpenFoodFacts.
+        1. Cache local (DB)
+        2. API OpenFoodFacts
         """
         # 1. Vérifier si on l'a déjà en cache local
         existing = db.query(ScannedProduct).get(barcode)
@@ -40,23 +41,25 @@ class BarcodeService:
                 product_data = data["product"]
                 nutriments = product_data.get("nutriments", {})
                 
-                # 3. Création de l'objet
+                # 3. Création de l'objet Cache
                 new_product = ScannedProduct(
                     barcode=barcode,
                     name=product_data.get("product_name", "Inconnu"),
-                    brand=product_data.get("brands", ""),
+                    brand=product_data.get("brands", "Inconnu"),
                     image_url=product_data.get("image_url", ""),
                     
-                    # On récupère les infos nutritionnelles (souvent pour 100g/ml)
-                    alcohol_degree=float(nutriments.get("alcohol_100g", 0.0) or 0.0),
-                    sugar_g_per_100ml=float(nutriments.get("sugars_100g", 0.0) or 0.0),
-                    kcal_per_100ml=float(nutriments.get("energy-kcal_100g", 0.0) or 0.0)
+                    # On récupère les infos nutritionnelles (converties en float par sécurité)
+                    alcohol_degree=float(nutriments.get("alcohol_100g", 0) or 0),
+                    sugar_g_per_100ml=float(nutriments.get("sugars_100g", 0) or 0),
+                    kcal_per_100ml=float(nutriments.get("energy-kcal_100g", 0) or 0)
                 )
                 
                 # 4. Sauvegarder en cache
                 db.add(new_product)
                 db.commit()
                 db.refresh(new_product)
+                
+                print(f"  -> Sauvegardé : {new_product.brand} - {new_product.name}")
                 return new_product
 
             except Exception as e:

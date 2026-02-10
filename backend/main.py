@@ -1,27 +1,29 @@
 """
-BarOS V4 - API Principale OPTIMISÉE (Version Finale)
-Architecture : Cache + Logs + Routers Modulaires
+BarOS V4 - API Principale (Version Finale & Optimisée)
+Architecture : Cache + Logs + Routers Modulaires + Gestion Hardware
 """
 
 import os
 import time
 import logging
 import psutil
-import gc
 from typing import Dict, Any
 
-from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from sqlalchemy import text
 
 # --- IMPORTS INTERNES ---
 from backend.database import Base, engine, get_db
 from backend import models
 from backend.routers import cocktails, ingredients, machine, admin, scanner
 from backend.services.machine_service import MachineService
+
+# 👇 Import du Hardware Manager et de la variable d'état
+from backend.hardware.gpio_manager import GPIOManager, GPIO_AVAILABLE
 
 # Configuration logging
 logging.basicConfig(level=logging.INFO)
@@ -39,21 +41,29 @@ app = FastAPI(
 )
 
 # ============================================================================
-# MIDDLEWARES (On garde tes super middlewares !)
+# 1. MIDDLEWARES
 # ============================================================================
 
 @app.middleware("http")
-async def log_requests(request, call_next):
+async def log_requests(request: Request, call_next):
+    """Log le temps de traitement de chaque requête"""
     start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
+        response.headers["X-Process-Time"] = str(process_time)
+        return response
+    except Exception as e:
+        # En cas de crash brutal avant le handler
+        process_time = time.time() - start_time
+        logger.error(f"❌ CRASH REQUEST {request.method} {request.url.path} - {e}")
+        raise e
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"], 
+    # ⚠️ Gardé ouvert ("*") pour la démo/soutenance afin d'éviter les problèmes réseaux
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,30 +71,37 @@ app.add_middleware(
 )
 
 # ============================================================================
-# FICHIERS STATIQUES & DEMARRAGE
+# 2. FICHIERS STATIQUES & STARTUP
 # ============================================================================
 
+# Dossier des images de cocktails
 static_dir = os.path.join(os.path.dirname(__file__), "../frontend/public/cocktails")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 @app.on_event("startup")
 async def startup_event():
+    """Initialisation complète du système au démarrage"""
     logger.info("🚀 Démarrage de BarOS V4...")
+    
+    # Création dossier data si inexistant
     os.makedirs("data", exist_ok=True)
     
-    # Création des tables DB
+    # A. Création des tables SQL (Indispensable pour SQLite)
     try:
         models.Base.metadata.create_all(bind=engine)
-        logger.info("✅ Base de données prête")
+        logger.info("✅ Base de données prête et connectée")
     except Exception as e:
-        logger.error(f"❌ Erreur DB: {e}")
-    
-    # Pré-chargement cache (Optionnel, simplifié ici)
-    logger.info("✅ Cache initialisé")
+        logger.error(f"❌ Erreur critique DB: {e}")
+
+    # B. Initialisation du Hardware (Charge config.json)
+    logger.info("🔌 Initialisation du Hardware...")
+    GPIOManager.setup() 
+
+    logger.info("✅ Système prêt à servir !")
 
 # ============================================================================
-# GESTION DU CACHE (Ton système)
+# 3. GESTION DU CACHE (Simple In-Memory)
 # ============================================================================
 
 class CacheManager:
@@ -108,7 +125,30 @@ class CacheManager:
 cache = CacheManager()
 
 # ============================================================================
-# ROUTES SYSTEME & MONITORING
+# 4. GESTIONNAIRES D'ERREURS (Exception Handlers)
+# ============================================================================
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc):
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Not Found", "message": f"Chemin introuvable: {request.url.path}"}
+    )
+
+@app.exception_handler(500)
+async def internal_error_handler(request: Request, exc):
+    """Capture les crashs serveur pour renvoyer un JSON propre au lieu de rien"""
+    logger.error(f"🔥 Erreur Serveur 500: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error", 
+            "message": "Une erreur interne est survenue. Consultez les logs serveur."
+        }
+    )
+
+# ============================================================================
+# 5. ROUTES SYSTÈME & MONITORING
 # ============================================================================
 
 @app.get("/", tags=["Système"])
@@ -117,20 +157,30 @@ def root():
         "status": "online",
         "system": "BarOS V4",
         "version": "4.9.5",
+        "mode": "Simulation" if not GPIO_AVAILABLE else "Production",
         "uptime": time.time() - app.state.start_time if hasattr(app.state, 'start_time') else 0
     }
 
 @app.get("/health", tags=["Système"])
 def health_check(db: Session = Depends(get_db)):
+    """Vérifie la santé de la DB et du Hardware"""
+    
+    # 1. Vérification Base de Données
     status_db = "healthy"
     try:
-        db.execute("SELECT 1")
-    except:
+        # Requête légère pour tester la connexion
+        db.execute(text("SELECT 1"))
+    except Exception as e:
+        logger.error(f"Health Check DB Failed: {e}")
         status_db = "unhealthy"
     
+    # 2. Vérification Hardware (Affiche si on est sur RPi ou PC)
+    hw_status = "connected" if GPIO_AVAILABLE else "simulation"
+    
     return {
-        "api": "healthy",
+        "api": "online",
         "database": status_db,
+        "hardware_mode": hw_status,
         "timestamp": time.time()
     }
 
@@ -148,19 +198,11 @@ def get_metrics():
     }
 
 # ============================================================================
-# INCLUSION DES ROUTERS (C'est ici qu'on branche tout !)
+# 6. INCLUSION DES ROUTERS
 # ============================================================================
 
 app.include_router(cocktails.router, prefix="/api/cocktails")
 app.include_router(ingredients.router, prefix="/api/ingredients")
 app.include_router(machine.router, prefix="/api/machine")
 app.include_router(admin.router, prefix="/api/admin")
-app.include_router(scanner.router) # Déjà préfixé dans le fichier
-
-# Gestionnaire d'erreur 404 propre
-@app.exception_handler(404)
-async def not_found_handler(request, exc):
-    return JSONResponse(
-        status_code=404,
-        content={"error": "Not Found", "message": f"Chemin introuvable: {request.url.path}"}
-    )
+app.include_router(scanner.router) # Le préfixe est déjà défini dans scanner.py

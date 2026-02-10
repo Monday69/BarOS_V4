@@ -11,7 +11,6 @@ export default function CocktailPage() {
   const [isPouring, setIsPouring] = useState(false);
 
   useEffect(() => {
-    // ✅ URL CORRIGÉE
     fetch(`http://localhost:8000/api/cocktails/${id}`)
       .then(res => res.json())
       .then(data => {
@@ -25,7 +24,6 @@ export default function CocktailPage() {
     if (!cocktail) return;
     setIsPouring(true);
     try {
-        // ✅ URL CORRIGÉE
         const response = await axios.post(`http://localhost:8000/api/cocktails/${cocktail.id}/pour`);
         const temps = response.data.estimated_time;
         alert(`✅ Commande lancée !\nTemps de préparation estimé : ${temps} secondes.`);
@@ -42,24 +40,64 @@ export default function CocktailPage() {
   return (
     <div className="min-h-screen w-full bg-[#0a0a0a] text-white font-sans relative overflow-hidden flex flex-col md:flex-row">
       <style>{`@keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-20px); } 100% { transform: translateY(0px); } }`}</style>
+      
       <button onClick={() => navigate(-1)} className="absolute top-6 left-6 z-50 p-3 bg-black/20 backdrop-blur-md rounded-full border border-white/10 hover:bg-white/10 transition-all group"><ArrowLeft size={24} className="group-hover:-translate-x-1 transition-transform" /></button>
+      
+      {/* SECTION IMAGE */}
       <div className="w-full md:w-1/2 h-[50vh] md:h-screen relative flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 bg-cover bg-center opacity-40 blur-[50px] scale-150" style={{ backgroundImage: `url(${cocktail.image_url})` }} />
         <div className="absolute inset-0 bg-black/30" />
         <div className="relative z-10 w-full h-full flex items-center justify-center p-8">
-            <img src={cocktail.image_url} alt={cocktail.name} style={{ animation: 'float 6s ease-in-out infinite' }} className="h-full w-full object-contain scale-100 drop-shadow-[0_30px_40px_rgba(0,0,0,0.6)]" />
+            <img 
+                src={cocktail.image_url} 
+                alt={cocktail.name} 
+                style={{ animation: 'float 6s ease-in-out infinite' }} 
+                className="h-full w-full object-contain scale-100 drop-shadow-[0_30px_40px_rgba(0,0,0,0.6)]"
+                onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80";
+                }}
+            />
         </div>
       </div>
+
+      {/* SECTION INFO */}
       <div className="w-full md:w-1/2 h-auto md:h-screen bg-[#0f0f0f]/90 backdrop-blur-xl border-l border-white/5 flex flex-col justify-center p-8 md:p-16 relative z-20">
         <div className="space-y-6 max-w-lg mx-auto">
             <div>
                 <h1 className="text-5xl md:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500 mb-2">{cocktail.name}</h1>
                 <div className="flex items-center gap-4"><span className="text-2xl text-orange-500 font-mono font-bold">{cocktail.price.toFixed(2)} €</span></div>
             </div>
+
+            {/* --- NOUVEAU BLOC NUTRITION --- */}
+            <div className="flex gap-4 my-2">
+                {/* Degré Alcool */}
+                <div className="flex flex-col items-center bg-white/5 p-3 rounded-xl border border-white/10 w-24">
+                    <span className="text-2xl font-bold text-white">{cocktail.nutrition?.alcohol_degree || 0}<span className="text-sm text-gray-500">%</span></span>
+                    <span className="text-[10px] uppercase tracking-wider text-gray-400">Alcool</span>
+                </div>
+
+                {/* Calories */}
+                <div className="flex flex-col items-center bg-white/5 p-3 rounded-xl border border-white/10 w-24">
+                    <span className="text-2xl font-bold text-orange-400">{cocktail.nutrition?.kcal || 0}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-gray-400">Kcal</span>
+                </div>
+
+                {/* Sucre (Code couleur dynamique) */}
+                <div className={`flex flex-col items-center p-3 rounded-xl border w-24 ${ (cocktail.nutrition?.sugar_g || 0) > 20 ? 'bg-red-500/10 border-red-500/30' : 'bg-green-500/10 border-green-500/30' }`}>
+                    <span className={`text-2xl font-bold ${ (cocktail.nutrition?.sugar_g || 0) > 20 ? 'text-red-400' : 'text-green-400' }`}>
+                        {cocktail.nutrition?.sugar_g || 0}<span className="text-sm">g</span>
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider text-gray-400">Sucre</span>
+                </div>
+            </div>
+            {/* ----------------------------- */}
+
             <div className="grid grid-cols-2 gap-4 py-4">
                 <div className="bg-white/5 p-4 rounded-xl flex items-center gap-3 border border-white/5"><Clock className="text-orange-500" /><div><div className="text-xs text-gray-500 uppercase">Temps estimé</div><div className="font-bold">~{cocktail.estimated_time || 12} s</div></div></div>
                 <div className="bg-white/5 p-4 rounded-xl flex items-center gap-3 border border-white/5"><Droplets className="text-blue-400" /><div><div className="text-xs text-gray-500 uppercase">Volume Total</div><div className="font-bold">{cocktail.total_volume_ml || 0} ml</div></div></div>
             </div>
+            
             <div className="pt-8">
                 <button onClick={handleOrder} disabled={!cocktail.compatible_with_stock || isPouring} className={`w-full py-5 rounded-2xl font-bold text-xl text-white flex items-center justify-center gap-3 transition-all ${isPouring ? 'bg-gray-700 cursor-wait' : (!cocktail.compatible_with_stock ? 'bg-red-900/50 cursor-not-allowed border border-red-500/50' : 'bg-gradient-to-r from-orange-500 to-red-600 shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)] hover:scale-[1.02] active:scale-95')}`}>
                     {isPouring ? (<> <Loader2 className="animate-spin" /> PRÉPARATION... </>) : (!cocktail.compatible_with_stock ? "STOCK INSUFFISANT" : <> <Play fill="currentColor" /> LANCER LA PRÉPARATION </>)}
