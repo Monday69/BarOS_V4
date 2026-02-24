@@ -21,22 +21,28 @@ class GPIOManager:
     PUMP_MAPPING = {} 
 
     @classmethod
+    @classmethod
     def _load_config(cls):
-        """Charge la configuration depuis config.json"""
+        """Charge la configuration depuis config.json avec détection de chemin robuste"""
         try:
-            # Chemin absolu vers backend/config.json
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            config_path = os.path.join(base_dir, "config.json")
+            # ✅ On part du dossier où se trouve ce fichier (gpio_manager.py)
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # ✅ On remonte jusqu'à la racine du backend (ajuste selon ton arborescence réelle)
+            # Si gpio_manager est dans backend/hardware/, on remonte de 2 niveaux
+            config_path = os.path.join(current_dir, "..", "..", "config.json")
+            config_path = os.path.normpath(config_path) # Nettoie les ".."
+            
+            logger.info(f"🔍 Tentative de lecture config : {config_path}")
             
             with open(config_path, 'r') as f:
                 data = json.load(f)
-                # Conversion des clés "1" (str) en 1 (int)
+                # Conversion des clés "1" (str) en 1 (int) car le JSON transforme tout en texte
                 cls.PUMP_MAPPING = {int(k): v for k, v in data.get("pump_mapping", {}).items()}
-                logger.info(f"📂 Configuration chargée : {len(cls.PUMP_MAPPING)} pompes")
+                logger.info(f"📂 Configuration chargée avec succès : {len(cls.PUMP_MAPPING)} pompes")
+                
         except Exception as e:
             logger.error(f"⚠️ Erreur chargement config.json : {e}")
-            logger.warning("Utilisation du mapping de secours (Fallback)")
-            # Mapping de secours si le fichier est introuvable
+            logger.warning("Utilisation du mapping de secours (Fallback GPIO 18, 23, 24, 25)")
             cls.PUMP_MAPPING = {1: 18, 2: 23, 3: 24, 4: 25}
 
     @classmethod

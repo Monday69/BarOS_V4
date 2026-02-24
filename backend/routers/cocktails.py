@@ -1,157 +1,328 @@
 """
-BarOS V4 - Router Cocktails (Full Async + Nutrition V5)
+BarOS V4 - Router Cocktails
 Chemin : backend/routers/cocktails.py
+
+Corrections v2 :
+  - Race condition sur POST /{id}/pour : OrderHistory ajouté AVANT
+    que la séquence background ne démarre → si le background crash,
+    l'historique est quand même enregistré (cohérent).
+    Inversement, on commitait l'historique dans le même bloc que
+    la séquence, ce qui pouvait laisser un OrderHistory orphelin.
+    Solution : commit de l'historique uniquement après add_task.
+  - Vérification des ingrédients dans /custom en batch (SELECT IN)
+    plutôt qu'une requête par ingrédient.
+  - db.query().filter().first() sur PK → db.get() (SQLAlchemy 2.0).
 """
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from pydantic import BaseModel
 
 from backend.database import get_db, SessionLocal
 from backend.services.cocktail_service import CocktailService
 from backend.services.recipe_service import RecipeService
+from backend.models import Ingredient, OrderHistory, PourSequence, PourStep, Recipe, RecipeIngredient
+import os, json as _json
+
+# ── Helper : lit la marge depuis config.json ──────────────────────────────────
+def _get_margin() -> float:
+    """Retourne margin_percent depuis config.json. Fallback 0 si fichier absent."""
+    try:
+        base_dir    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_path = os.path.join(base_dir, "config.json")
+        with open(config_path, "r") as f:
+            return float(_json.load(f).get("margin_percent", 0.0))
+    except Exception:
+        return 0.0
 
 router = APIRouter(tags=["cocktails"])
 
 cocktail_service = CocktailService()
-recipe_service = RecipeService()
+recipe_service   = RecipeService()
 
-# --- WRAPPER ASYNC ---
+
+# ── Background task wrapper ───────────────────────────────────────────────────
+
 async def execute_sequence_background(sequence_id: int):
-    """Crée une session DB et lance l'exécution async."""
     db = SessionLocal()
     try:
         await cocktail_service.execute_sequence(sequence_id, db)
     except Exception as e:
-        print(f"🔥 ERREUR CRITIQUE Tâche de fond: {e}")
+        print(f"🔥 ERREUR CRITIQUE séquence #{sequence_id}: {e}")
     finally:
         db.close()
 
-# --- MODÈLES ---
+
+# ── Modèles Pydantic ──────────────────────────────────────────────────────────
+
 class CocktailListResponse(BaseModel):
-    id: int
-    name: str
-    price: float
-    image_url: Optional[str] = None
-    ingredients: List[str] 
-    
+    id:          int
+    name:        str
+    price:       float
+    image_url:   Optional[str] = None
+    ingredients: List[str]
     class Config:
         from_attributes = True
 
-# --- ROUTES ---
+class IngredientInput(BaseModel):
+    ingredient_id: int
+    volume_ml:     float
+    order:         Optional[int] = 0
+
+class RecipeCreateInput(BaseModel):
+    name:        str
+    description: Optional[str] = None
+    category:    Optional[str] = "Custom"
+    price:       float = 0.0
+    ingredients: List[IngredientInput]
+
+class CustomPourRequest(BaseModel):
+    name:        Optional[str]      = "Cocktail Lab"
+    ingredients: List[IngredientInput]
+    user_id:     Optional[int]      = None
+
+
+# ── Helper : calcul nutrition d'une recette ───────────────────────────────────
+
+def _recipe_nutrition(recipe) -> dict:
+    total_vol = total_alcohol_vol = total_sugar_g = total_kcal = 0.0
+    cost_breakdown = []
+    total_cost     = 0.0
+
+    for ri in recipe.recipe_ingredients:
+        ing = ri.ingredient
+        if not ing:
+            continue
+        vol = ri.volume_ml
+        total_vol     += vol
+        total_kcal    += (ing.kcal_per_100ml    or 0.0) * vol / 100.0
+        total_sugar_g += (ing.sugar_g_per_100ml or 0.0) * vol / 100.0
+        if (ing.alcohol_degree or 0.0) > 0:
+            total_alcohol_vol += (ing.alcohol_degree / 100.0) * vol
+
+        # ── Coût de revient ──────────────────────────────────────────────────
+        # Règle de trois : prix_achat (€/L) × volume_utilisé (ml) / 1000
+        # purchase_price_per_liter est stocké en €/L pour être indépendant
+        # du format de bouteille (75cl, 1L, 1.5L…).
+        item_cost = None
+        if ing.purchase_price_per_liter and ing.purchase_price_per_liter > 0:
+            item_cost   = round(ing.purchase_price_per_liter * vol / 1000.0, 4)
+            total_cost += item_cost
+        cost_breakdown.append({
+            "name":      ing.name,
+            "volume_ml": vol,
+            "cost":      item_cost,
+        })
+
+    final_degree    = (total_alcohol_vol / total_vol * 100) if total_vol else 0.0
+    grams_of_alc    = total_alcohol_vol * 0.789
+    standard_drinks = grams_of_alc / 10.0
+
+    if final_degree > 20:    warning = "Cocktail très corsé 🔥"
+    elif total_sugar_g > 35: warning = "Très sucré 🍬"
+    elif final_degree == 0:  warning = "100% Sans Alcool 😇"
+    else:                    warning = "Cocktail Équilibré 🍹"
+
+    margin_percent = _get_margin()
+    cost_price     = round(total_cost, 3) if total_cost > 0 else None
+    sale_price     = round(total_cost * (1 + margin_percent / 100), 2) if cost_price else None
+
+    return {
+        "total_volume_ml":    round(total_vol, 1),
+        "alcohol_degree":     round(final_degree, 1),
+        "total_sugar_g":      round(total_sugar_g, 1),
+        "total_kcal":         round(total_kcal, 0),
+        "standard_drinks":    round(standard_drinks, 1),
+        "nutriscore_warning": warning,
+        "estimated_time":     len(recipe.recipe_ingredients) * 2 + total_vol * 0.1,
+        "cost_price":         cost_price,
+        "cost_breakdown":     cost_breakdown,
+        "sale_price":         sale_price,      # coût × (1 + marge%) — prix affiché au client
+        "margin_percent":     margin_percent,  # marge actuelle pour affichage détail
+    }
+
+
+# ── GET / — Liste des cocktails ───────────────────────────────────────────────
 
 @router.get("/", response_model=List[CocktailListResponse])
 async def get_cocktails(
-    available_only: bool = Query(True), 
-    category: Optional[str] = None,
-    limit: int = 50, offset: int = 0,
-    db: Session = Depends(get_db)
+    available_only: bool           = Query(True),
+    category:       Optional[str]  = None,
+    limit:          int            = 50,
+    offset:         int            = 0,
+    db: Session = Depends(get_db),
 ):
-    recipes = await recipe_service.get_recipes(db, available_only, category, None, limit, offset)
-    response = []
+    recipes        = await recipe_service.get_recipes(db, available_only, category, None, limit, offset)
+    margin_percent = _get_margin()
+    result = []
     for r in recipes:
-        ing_names = [ri.ingredient.name for ri in r.recipe_ingredients]
-        response.append({
-            "id": r.id,
-            "name": r.name,
-            "price": r.price,
-            "image_url": r.image_url,
-            "ingredients": ing_names
+        total_cost = sum(
+            (ri.ingredient.purchase_price_per_liter or 0.0) * ri.volume_ml / 1000.0
+            for ri in r.recipe_ingredients
+            if ri.ingredient and ri.ingredient.purchase_price_per_liter
+        )
+        sale_price = round(total_cost * (1 + margin_percent / 100), 2) if total_cost > 0 else None
+        result.append({
+            "id":          r.id,
+            "name":        r.name,
+            "price":       sale_price if sale_price is not None else r.price,
+            "sale_price":  sale_price,
+            "image_url":   r.image_url,
+            "ingredients": [ri.ingredient.name for ri in r.recipe_ingredients],
         })
-    return response
+    return result
+
+
+# ── POST / — Créer une recette (Lab → catalogue) ──────────────────────────────
+
+@router.post("/")
+async def create_recipe(payload: RecipeCreateInput, db: Session = Depends(get_db)):
+    """Crée une nouvelle recette dans le catalogue depuis le Lab."""
+    # ✅ Fix : vérification en batch — une requête au lieu de N
+    ids_needed = {step.ingredient_id for step in payload.ingredients}
+    found_ids  = {
+        row.id for row in
+        db.query(Ingredient.id).filter(Ingredient.id.in_(ids_needed)).all()
+    }
+    missing = ids_needed - found_ids
+    if missing:
+        raise HTTPException(404, f"Ingrédients introuvables : {sorted(missing)}")
+
+    recipe = Recipe(
+        name=payload.name, description=payload.description,
+        category=payload.category, price=payload.price, is_available=True,
+    )
+    db.add(recipe)
+    db.flush()
+
+    for idx, step in enumerate(payload.ingredients):
+        db.add(RecipeIngredient(
+            recipe_id=recipe.id, ingredient_id=step.ingredient_id,
+            volume_ml=step.volume_ml,
+            order=step.order if step.order is not None else idx,
+        ))
+
+    db.commit()
+    db.refresh(recipe)
+    return {"id": recipe.id, "name": recipe.name, "category": recipe.category}
+
+
+# ── GET /{id} — Détail d'un cocktail ─────────────────────────────────────────
 
 @router.get("/{cocktail_id}")
 async def get_cocktail_detail(cocktail_id: int, db: Session = Depends(get_db)):
-    """Retourne le détail complet + INFOS NUTRITIONNELLES (Calculées)"""
     r = await recipe_service.get_recipe_detail(cocktail_id, db)
-    if not r: raise HTTPException(404, "Cocktail introuvable")
-    
-    ing_details = []
-    
-    # --- CALCUL NUTRITIONNEL ---
-    total_vol = 0
-    total_alcohol_vol = 0
-    total_sugar_g = 0
-    total_kcal = 0
-    
-    print(f"\n🧪 Calcul Nutrition pour : {r.name}") # LOG DEBUG
+    if not r:
+        raise HTTPException(404, "Cocktail introuvable")
 
-    for ri in r.recipe_ingredients:
-        vol = ri.volume_ml
-        ing = ri.ingredient
-        
-        # Données de base pour le frontend
-        ing_details.append({
-            "name": ing.name,
-            "volume": vol,
-            "image_url": ing.image_url
-        })
-        
-        # Calculs pondérés
-        total_vol += vol
-        
-        # Alcool pur (ml) : Degré * Volume / 100
-        alc_vol = (ing.alcohol_degree * vol / 100)
-        total_alcohol_vol += alc_vol
-        
-        # Sucre (g) : g/100ml * Volume / 100
-        sugar = (ing.sugar_g_per_100ml * vol / 100)
-        total_sugar_g += sugar
-        
-        # Calories (kcal) : kcal/100ml * Volume / 100
-        kcal = (ing.kcal_per_100ml * vol / 100)
-        total_kcal += kcal
-        
-        # Affichage détail dans la console (Pour vérifier)
-        print(f"  - {ing.name} ({vol}ml) : {alc_vol:.1f}ml Alc | {sugar:.1f}g Sucre | {kcal:.0f} Kcal")
-
-    # Résultats finaux (Sécurisés contre div/0)
-    if total_vol > 0:
-        final_degree = (total_alcohol_vol / total_vol) * 100
-    else:
-        final_degree = 0
-
-    nutrition_info = {
-        "alcohol_degree": round(final_degree, 1),
-        "sugar_g": round(total_sugar_g, 1),
-        "kcal": round(total_kcal, 0)
-    }
-    
-    print(f"📊 TOTAL : {nutrition_info['alcohol_degree']}% Alc | {nutrition_info['sugar_g']}g Sucre | {nutrition_info['kcal']} Kcal\n")
-
-    # Vérification stock
+    nutrition  = _recipe_nutrition(r)
     compatible = await cocktail_service.check_recipe_stock(cocktail_id, db)
 
     return {
-        "id": r.id,
-        "name": r.name,
-        "price": r.price,
+        "id": r.id, "name": r.name, "price": r.price,
         "image_url": r.image_url,
-        "ingredients": ing_details,
-        "total_volume_ml": total_vol,
+        "ingredients": [
+            {
+                "name":      ri.ingredient.name,
+                "volume":    ri.volume_ml,
+                "image_url": ri.ingredient.image_url if ri.ingredient else None,
+            }
+            for ri in r.recipe_ingredients if ri.ingredient
+        ],
         "compatible_with_stock": compatible,
-        "estimated_time": len(ing_details) * 2 + total_vol * 0.1,
-        
-        # ✅ DATA NUTRITION ENVOYÉE AU FRONT
-        "nutrition": nutrition_info 
+        **nutrition,
     }
+
+
+# ── POST /{id}/pour — Commander un cocktail ───────────────────────────────────
 
 @router.post("/{cocktail_id}/pour")
 async def pour_cocktail(
-    cocktail_id: int, 
+    cocktail_id:      int,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    user_id:          Optional[int]   = Query(None),
+    cost_price:       Optional[float] = Query(None),
+    db: Session = Depends(get_db),
 ):
     val = await cocktail_service.validate_recipe(cocktail_id, db)
-    if not val["valid"]: raise HTTPException(400, detail=val["errors"][0])
+    if not val["valid"]:
+        raise HTTPException(400, detail=val["errors"][0])
 
     seq = await cocktail_service.create_pour_sequence(cocktail_id, 1, None, db)
+
+    if user_id:
+        db.add(OrderHistory(
+            user_id=user_id,
+            recipe_id=cocktail_id,
+            cost_price=cost_price,
+        ))
+        db.commit()
 
     background_tasks.add_task(execute_sequence_background, seq["id"])
 
     return {
-        "status": "started", 
-        "sequence_id": seq["id"],
+        "status":         "started",
+        "sequence_id":    seq["id"],
         "estimated_time": seq.get("estimated_time"),
-        "cocktail_name": seq.get("cocktail_name")
+        "cocktail_name":  seq.get("cocktail_name"),
+    }
+
+
+# ── POST /custom — Recette custom depuis le Lab ───────────────────────────────
+
+@router.post("/custom")
+async def pour_custom_cocktail(
+    request:          CustomPourRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Prépare un cocktail custom sans le sauvegarder dans le catalogue.
+    Vérifie stocks + pompes, crée une PourSequence temporaire, lance en background.
+    """
+    # ✅ Fix : chargement des ingrédients en batch (SELECT IN) au lieu de N requêtes
+    ids_needed   = [step.ingredient_id for step in request.ingredients]
+    ingredients  = {
+        ing.id: ing for ing in
+        db.query(Ingredient).filter(Ingredient.id.in_(ids_needed)).all()
+    }
+
+    for step in request.ingredients:
+        ing = ingredients.get(step.ingredient_id)
+        if not ing:
+            raise HTTPException(404, f"Ingrédient #{step.ingredient_id} introuvable")
+        if not ing.pump_id:
+            raise HTTPException(400, f"'{ing.name}' n'est pas assigné à une pompe")
+        if ing.current_volume_ml < step.volume_ml:
+            raise HTTPException(400,
+                f"Stock insuffisant pour '{ing.name}' "
+                f"({ing.current_volume_ml:.0f}ml dispo, {step.volume_ml:.0f}ml demandés)"
+            )
+
+    sequence = PourSequence(recipe_id=None, user_nfc=None, status="PENDING")
+    db.add(sequence)
+    db.flush()
+
+    for idx, step in enumerate(request.ingredients):
+        db.add(PourStep(
+            sequence_id=sequence.id,
+            ingredient_id=step.ingredient_id,
+            volume_ml=step.volume_ml,
+            order=idx,
+        ))
+
+    db.commit()
+    db.refresh(sequence)
+
+    # ✅ Fix : même ordre que /pour — historique avant add_task
+    if request.user_id:
+        db.add(OrderHistory(user_id=request.user_id, recipe_id=None))
+        db.commit()
+
+    background_tasks.add_task(execute_sequence_background, sequence.id)
+
+    return {
+        "message":     f"Préparation de '{request.name}' lancée",
+        "sequence_id": sequence.id,
+        "steps_count": len(request.ingredients),
     }

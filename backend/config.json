@@ -15,5 +15,6 @@
   },
   "physics": {
     "max_flow_rate_ml_sec": 10.0
-  }
+  },
+  "margin_percent": 50.0
 }
