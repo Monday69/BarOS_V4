@@ -22,7 +22,7 @@ function calcBacImpact(standardDrinks, weightKg, gender) {
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function Toast({ toasts }) {
   return (
-    <div className="fixed top-6 right-6 z-[999] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed top-20 right-6 z-[999] flex flex-col gap-2 pointer-events-none">
       {toasts.map(t => (
         <div key={t.id}
           className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl text-sm font-semibold
@@ -166,6 +166,8 @@ export default function CocktailPage() {
   const [loading,   setLoading]   = useState(true);
   const [isPouring, setIsPouring] = useState(false);
   const [imgError,  setImgError]  = useState(false);
+  const [balance,   setBalance]   = useState(null);
+  const [payConfig, setPayConfig] = useState({ require_payment: false });
 
   const isFav = cocktail && favorites.includes(cocktail.id);
 
@@ -176,23 +178,72 @@ export default function CocktailPage() {
       .then(r => setCocktail(r.data))
       .catch(e => { console.error("Erreur chargement cocktail:", e); setCocktail(null); })
       .finally(() => setLoading(false));
+    // Config paiement
+    axios.get(`${API}/payments/config`).then(r => setPayConfig(r.data)).catch(() => {});
   }, [id]);
 
-  // ── Commande — snapshot le cost_price au moment de la commande ────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    axios.get(`${API}/payments/balance/${user.id}`)
+      .then(r => setBalance(r.data.balance))
+      .catch(() => {});
+  }, [user]);
+
+  // ── Commande — avec vérification solde et débit Stripe ─────────────────
   const handleOrder = async () => {
     if (!cocktail || isPouring) return;
+
+    // 🔒 VERROU 1 : Vérifier si un utilisateur est connecté
+    if (!user) {
+      toast("🚫 Veuillez scanner votre badge pour commander", 'error');
+      // Optionnel : rediriger vers la home pour qu'ils badgent
+      // navigate('/'); 
+      return;
+    }
+
+    // Si paiement requis et solde insuffisant → rediriger vers la recharge
+    if (payConfig.require_payment && cocktail.sale_price != null && user) {
+      const currentBalance = balance ?? 0;
+      if (currentBalance < cocktail.sale_price) {
+        navigate('/payment', {
+          state: {
+            userId:         user.id,
+            userName:       user.name,
+            requiredAmount: cocktail.sale_price,
+            returnTo:       `/cocktail/${cocktail.id}`,
+          }
+        });
+        return;
+      }
+    }
+
     setIsPouring(true);
     try {
       const params = user ? { user_id: user.id } : {};
-      // On passe cost_price pour que le backend le snapshot dans OrderHistory
-      if (cocktail.cost_price != null) {
-        params.cost_price = cocktail.cost_price;
-      }
+      if (cocktail.cost_price != null)  params.cost_price  = cocktail.cost_price;
+      if (cocktail.sale_price != null)  params.sale_price  = cocktail.sale_price;
+
       const res   = await axios.post(`${API}/cocktails/${cocktail.id}/pour`, null, { params });
       const temps = Math.round(res.data.estimated_time ?? 0);
+
+      // Mettre à jour le solde affiché
+      if (res.data.new_balance != null) setBalance(res.data.new_balance);
+
       toast(`✅ Préparation lancée — environ ${temps}s`, 'success');
     } catch (err) {
       const detail = err.response?.data?.detail;
+      // 402 = solde insuffisant (race condition entre check et débit)
+      if (err.response?.status === 402 && typeof detail === 'object' && user) {
+        navigate('/payment', {
+          state: {
+            userId:         user.id,
+            userName:       user.name,
+            requiredAmount: detail.required,
+            returnTo:       `/cocktail/${cocktail.id}`,
+          }
+        });
+        return;
+      }
       const msg = typeof detail === 'string'
         ? detail
         : Array.isArray(detail)
@@ -323,7 +374,30 @@ export default function CocktailPage() {
               highlight={(cocktail.total_sugar_g ?? 0) > 25} />
           </div>
 
-          {/* ✅ Nouveau : prix de revient cliquable */}
+          {/* Solde + avertissement si insuffisant */}
+          {payConfig.require_payment && user && balance !== null && cocktail.sale_price != null && (
+            <div className={`flex items-center justify-between px-4 py-3 rounded-xl border text-sm
+                            ${balance >= cocktail.sale_price
+                              ? 'bg-emerald-500/5 border-emerald-500/20'
+                              : 'bg-red-500/5 border-red-500/20'}`}>
+              <span className="text-gray-400">Ton solde</span>
+              <div className="flex items-center gap-3">
+                <span className={`font-black text-lg ${balance >= cocktail.sale_price ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {balance.toFixed(2)} €
+                </span>
+                {balance < cocktail.sale_price && (
+                  <button
+                    onClick={() => navigate('/payment', { state: { userId: user.id, userName: user.name, requiredAmount: cocktail.sale_price, returnTo: `/cocktail/${cocktail.id}` }})}
+                    className="text-xs bg-violet-600 hover:bg-violet-500 px-3 py-1.5 rounded-lg font-bold transition-all"
+                  >
+                    Recharger
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Prix de revient cliquable */}
           <CostBreakdown cocktail={cocktail} />
 
           {/* Temps + volume */}
@@ -348,26 +422,36 @@ export default function CocktailPage() {
           <div className="pt-4">
             <button
               onClick={handleOrder}
-              disabled={!cocktail.compatible_with_stock || isPouring}
+              disabled={isPouring || (user && !cocktail.compatible_with_stock)}
               className={`w-full py-5 rounded-2xl font-bold text-xl text-white
                           flex items-center justify-center gap-3 transition-all
-                          ${isPouring
-                            ? 'bg-gray-700 cursor-wait'
-                            : !cocktail.compatible_with_stock
-                              ? 'bg-red-900/50 cursor-not-allowed border border-red-500/50'
-                              : `bg-gradient-to-r from-orange-500 to-red-600
-                                 shadow-[0_0_30px_rgba(249,115,22,0.4)]
-                                 hover:shadow-[0_0_50px_rgba(249,115,22,0.6)]
-                                 hover:scale-[1.02] active:scale-95`}`}
+                          ${!user 
+                            ? 'bg-violet-900/40 border border-violet-500/50 text-violet-200 shadow-[0_0_20px_rgba(139,92,246,0.2)]' 
+                            : isPouring
+                              ? 'bg-gray-700 cursor-wait'
+                              : !cocktail.compatible_with_stock
+                                ? 'bg-red-900/50 cursor-not-allowed border border-red-500/50'
+                                : `bg-gradient-to-r from-orange-500 to-red-600
+                                   shadow-[0_0_30px_rgba(249,115,22,0.4)]
+                                   hover:shadow-[0_0_50px_rgba(249,115,22,0.6)]
+                                   hover:scale-[1.02] active:scale-95`}`}
             >
               {isPouring ? (
                 <><Loader2 className="animate-spin" /> PRÉPARATION…</>
+              ) : !user ? (
+                <><CheckCircle className="text-violet-400" /> SCANNEZ VOTRE BADGE</>
               ) : !cocktail.compatible_with_stock ? (
                 "STOCK INSUFFISANT"
               ) : (
                 <><Play fill="currentColor" /> LANCER LA PRÉPARATION</>
               )}
             </button>
+            
+            {!user && (
+              <p className="text-center text-xs text-violet-400/60 mt-3 animate-pulse">
+                L'identification est requise pour servir une boisson
+              </p>
+            )}
           </div>
 
         </div>

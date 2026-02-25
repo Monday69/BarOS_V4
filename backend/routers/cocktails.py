@@ -15,6 +15,7 @@ Corrections v2 :
 """
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select
 from typing import List, Optional
 from pydantic import BaseModel
 
@@ -22,6 +23,7 @@ from backend.database import get_db, SessionLocal
 from backend.services.cocktail_service import CocktailService
 from backend.services.recipe_service import RecipeService
 from backend.models import Ingredient, OrderHistory, PourSequence, PourStep, Recipe, RecipeIngredient
+from backend.logic.fluid_physics import FluidPhysics
 import os, json as _json
 
 # ── Helper : lit la marge depuis config.json ──────────────────────────────────
@@ -134,7 +136,6 @@ def _recipe_nutrition(recipe) -> dict:
         "total_kcal":         round(total_kcal, 0),
         "standard_drinks":    round(standard_drinks, 1),
         "nutriscore_warning": warning,
-        "estimated_time":     len(recipe.recipe_ingredients) * 2 + total_vol * 0.1,
         "cost_price":         cost_price,
         "cost_breakdown":     cost_breakdown,
         "sale_price":         sale_price,      # coût × (1 + marge%) — prix affiché au client
@@ -215,8 +216,35 @@ async def get_cocktail_detail(cocktail_id: int, db: Session = Depends(get_db)):
     if not r:
         raise HTTPException(404, "Cocktail introuvable")
 
-    nutrition  = _recipe_nutrition(r)
+    nutrition = _recipe_nutrition(r)
     compatible = await cocktail_service.check_recipe_stock(cocktail_id, db)
+
+    # ✅ CALCUL DU TEMPS PRÉCIS (identique à create_pour_sequence)
+    precise_time = 0.0
+    try:
+        # Charger les ingrédients avec leurs niveaux de stock actuels
+        recipe_ingredients = db.execute(
+            select(RecipeIngredient)
+            .options(joinedload(RecipeIngredient.ingredient))
+            .filter(RecipeIngredient.recipe_id == cocktail_id)
+            .order_by(RecipeIngredient.order)
+        ).unique().scalars().all()
+        
+        for ri in recipe_ingredients:
+            if FluidPhysics and ri.ingredient:
+                duration = FluidPhysics.calculate_pour_duration(
+                    target_volume_ml=ri.volume_ml,
+                    current_volume_ml=ri.ingredient.current_volume_ml,
+                    max_volume_ml=ri.ingredient.max_volume_ml or 1000
+                )
+                precise_time += duration
+            else:
+                precise_time += ri.volume_ml * 0.1  # Fallback
+                
+        precise_time = round(precise_time, 1)
+    except Exception as e:
+        print(f"⚠️ Erreur calcul temps précis: {e}")
+        precise_time = nutrition.get("estimated_time", 0)
 
     return {
         "id": r.id, "name": r.name, "price": r.price,
@@ -231,8 +259,8 @@ async def get_cocktail_detail(cocktail_id: int, db: Session = Depends(get_db)):
         ],
         "compatible_with_stock": compatible,
         **nutrition,
+        "estimated_time": precise_time,  # ✅ On écrase avec le temps précis
     }
-
 
 # ── POST /{id}/pour — Commander un cocktail ───────────────────────────────────
 
@@ -242,21 +270,68 @@ async def pour_cocktail(
     background_tasks: BackgroundTasks,
     user_id:          Optional[int]   = Query(None),
     cost_price:       Optional[float] = Query(None),
+    sale_price:       Optional[float] = Query(None),
     db: Session = Depends(get_db),
 ):
+    # 🔒 VERROU 1 : Interdire formellement les requêtes anonymes (Anti-Triche)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Identification par badge requise")
+
     val = await cocktail_service.validate_recipe(cocktail_id, db)
     if not val["valid"]:
         raise HTTPException(400, detail=val["errors"][0])
 
+    # 1. Récupération de l'utilisateur
+    from backend.models import User as _User, PaymentTransaction
+    user = db.get(_User, user_id)
+    if not user:
+        raise HTTPException(404, detail="Utilisateur inconnu")
+
+    # 2. Lecture globale de la configuration de paiement
+    import json as _json
+    try:
+        _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _cfg  = _json.load(open(os.path.join(_base, "config.json")))
+        # Supporte les deux formats de config possibles
+        _require = _cfg.get("require_payment", _cfg.get("payment", {}).get("require_payment", False))
+    except Exception:
+        _require = False
+
+    # 🔒 VERROU 2 : Vérification du solde et débit avant d'activer les pompes
+    if _require and sale_price is not None:
+        if user.balance < sale_price:
+            raise HTTPException(402, detail={
+                "code":     "INSUFFICIENT_BALANCE",
+                "balance":  round(user.balance, 2),
+                "required": sale_price,
+                "message":  f"Solde insuffisant ({user.balance:.2f}€ dispo, {sale_price:.2f}€ requis)"
+            })
+        
+        # Le solde est suffisant, on débite
+        user.balance = round(user.balance - sale_price, 2)
+        
+        # On trace le débit
+        db.add(PaymentTransaction(
+            user_id     = user.id,
+            amount      = -sale_price,
+            type        = "debit",
+            status      = "completed",
+            description = f"Cocktail #{cocktail_id}",
+        ))
+
+    # 3. Lancement de la séquence (Pompes)
     seq = await cocktail_service.create_pour_sequence(cocktail_id, 1, None, db)
 
-    if user_id:
-        db.add(OrderHistory(
-            user_id=user_id,
-            recipe_id=cocktail_id,
-            cost_price=cost_price,
-        ))
-        db.commit()
+    # 4. Historique de commande
+    db.add(OrderHistory(
+        user_id=user.id,
+        recipe_id=cocktail_id,
+        cost_price=cost_price,
+        sale_price=sale_price,
+    ))
+    
+    # 💾 On sauvegarde tout d'un coup (Solde + Transaction + Historique)
+    db.commit()
 
     background_tasks.add_task(execute_sequence_background, seq["id"])
 
@@ -265,6 +340,7 @@ async def pour_cocktail(
         "sequence_id":    seq["id"],
         "estimated_time": seq.get("estimated_time"),
         "cocktail_name":  seq.get("cocktail_name"),
+        "new_balance":    round(user.balance, 2),
     }
 
 
@@ -280,13 +356,17 @@ async def pour_custom_cocktail(
     Prépare un cocktail custom sans le sauvegarder dans le catalogue.
     Vérifie stocks + pompes, crée une PourSequence temporaire, lance en background.
     """
-    # ✅ Fix : chargement des ingrédients en batch (SELECT IN) au lieu de N requêtes
+    # 🔒 VERROU : Appliquer la même règle d'identification pour le Lab Custom
+    if request.user_id is None:
+        raise HTTPException(status_code=401, detail="Identification par badge requise")
+
     ids_needed   = [step.ingredient_id for step in request.ingredients]
     ingredients  = {
         ing.id: ing for ing in
         db.query(Ingredient).filter(Ingredient.id.in_(ids_needed)).all()
     }
 
+    # ... Vérifications des ingrédients ...
     for step in request.ingredients:
         ing = ingredients.get(step.ingredient_id)
         if not ing:
@@ -311,13 +391,9 @@ async def pour_custom_cocktail(
             order=idx,
         ))
 
+    db.add(OrderHistory(user_id=request.user_id, recipe_id=None))
     db.commit()
     db.refresh(sequence)
-
-    # ✅ Fix : même ordre que /pour — historique avant add_task
-    if request.user_id:
-        db.add(OrderHistory(user_id=request.user_id, recipe_id=None))
-        db.commit()
 
     background_tasks.add_task(execute_sequence_background, sequence.id)
 

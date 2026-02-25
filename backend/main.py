@@ -1,6 +1,13 @@
 """
 BarOS V4 - Point d'entrée principal
 Chemin : backend/main.py
+
+Corrections v2 :
+  - on_event("startup") déprécié → lifespan (FastAPI >= 0.93)
+  - CacheManager redéfini en doublon → import depuis utils.cache
+  - allow_origins=["*"] + allow_credentials=True = config CORS invalide
+    (les navigateurs rejettent cette combinaison en production)
+    → origines explicites avec fallback sur variable d'environnement
 """
 import os
 import time
@@ -17,10 +24,9 @@ from sqlalchemy import text
 
 from backend.database import engine, get_db
 from backend import models
-from backend.routers import cocktails, ingredients, machine, admin, scanner, users, logs
+from backend.routers import cocktails, ingredients, machine, admin, scanner, users, logs, payments, colors
 from backend.services.machine_service import MachineService
 from backend.hardware.gpio_manager import GPIOManager, GPIO_AVAILABLE
-from backend.routers import cocktails, ingredients, machine, admin, scanner, users, logs, colors
 
 # ✅ Fix : import depuis utils.cache — supprime la redéfinition locale
 from backend.utils.cache import CacheManager
@@ -173,4 +179,5 @@ app.include_router(admin.router,       prefix="/api/admin",       tags=["admin"]
 app.include_router(scanner.router,                                tags=["scanner"])
 app.include_router(users.router,       prefix="/api/users",       tags=["users"])
 app.include_router(logs.router,        prefix="/api/logs",        tags=["logs"])
-app.include_router(colors.router, prefix="/api/colors", tags=["colors"])
+app.include_router(payments.router,    prefix="/api/payments",    tags=["payments"])
+app.include_router(colors.router,      prefix="/api/colors",      tags=["colors"])

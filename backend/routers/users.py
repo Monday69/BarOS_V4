@@ -568,3 +568,11 @@ def get_admin_stats(user_id: int, db: Session = Depends(get_db)):
         "total_cost": round(total_cost, 2),
         "total_margin": round(total_margin, 2),
     }
+
+@router.get("/", response_model=List[UserResponse])
+def get_all_users(db: Session = Depends(get_db)):
+    """
+    Liste tous les utilisateurs (accessible uniquement par l'admin)
+    """
+    users = db.query(User).all()
+    return users

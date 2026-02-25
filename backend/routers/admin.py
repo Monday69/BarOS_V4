@@ -61,6 +61,20 @@ def _write_config(data: dict):
 class MarginUpdate(BaseModel):
     margin_percent: float
 
+# ── PUT /payment-config ──────────────────────────────────────────────────────
+class PaymentConfigUpdate(BaseModel):
+    require_payment: bool
+
+@router.put("/payment-config", dependencies=[Depends(verify_admin)])
+def update_payment_config(payload: PaymentConfigUpdate):
+    """Active/désactive le paiement obligatoire."""
+    config = _read_config()
+    if "payment" not in config:
+        config["payment"] = {}
+    config["payment"]["require_payment"] = payload.require_payment
+    _write_config(config)
+    return {"require_payment": payload.require_payment, "status": "updated"}
+
 # ── GET /margin ───────────────────────────────────────────────────────────────
 @router.get("/margin")
 def get_margin():

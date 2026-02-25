@@ -1,17 +1,33 @@
-import React, { createContext, useState, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 
 const UserContext = createContext(null);
 
-// ✅ Fix : ADMIN_CARD_UID "DEADBEEF" supprimé — le statut admin
-// vient uniquement du champ is_admin retourné par le backend.
-// Aucune logique admin ne doit reposer sur un UID hardcodé côté frontend.
-
 export const UserProvider = ({ children }) => {
   const [user, setUser]           = useState(null);
   const [favorites, setFavorites] = useState([]);
-  const [loading, setLoading]     = useState(false);
+  const [loading, setLoading]     = useState(true); // Commencer en chargement pour vérifier le localStorage
   const [isAdmin, setIsAdmin]     = useState(false);
+
+  // ── 🔄 Persistance de la session ─────────────────────────────────────────────
+  useEffect(() => {
+    const checkPersistedUser = async () => {
+      const savedUser = localStorage.getItem('baros_user');
+      if (savedUser) {
+        try {
+          const userData = JSON.parse(savedUser);
+          setUser(userData);
+          setIsAdmin(!!userData.is_admin);
+          await loadFavorites(userData.id);
+        } catch (e) {
+          console.error("Erreur de lecture du stockage local", e);
+          localStorage.removeItem('baros_user');
+        }
+      }
+      setLoading(false);
+    };
+    checkPersistedUser();
+  }, []);
 
   // ── Scan carte NFC ──────────────────────────────────────────────────────────
   const scanCard = async (cardUid) => {
@@ -21,16 +37,15 @@ export const UserProvider = ({ children }) => {
       const userData = res.data;
 
       setUser(userData);
-      // ✅ Fix : is_admin vient du backend — pas d'un UID hardcodé
       setIsAdmin(!!userData.is_admin);
+      
+      // ✅ Sauvegarde dans le navigateur
+      localStorage.setItem('baros_user', JSON.stringify(userData));
+      
       await loadFavorites(userData.id);
       return { success: true, user: userData };
-
     } catch (error) {
-      if (error.response?.status === 404) {
-        return { success: false, new: true };
-      }
-      console.error("Erreur Scan:", error.message);
+      if (error.response?.status === 404) return { success: false, new: true };
       return { success: false, error: error.message };
     } finally {
       setLoading(false);
@@ -42,16 +57,17 @@ export const UserProvider = ({ children }) => {
     setLoading(true);
     try {
       const res = await axios.post('http://localhost:8000/api/users/register', {
-        card_uid:  cardUid,
-        name,
-        gender,
-        weight_kg: weight,
-        age,
-        preferences
+        card_uid: cardUid,
+        name, gender, weight_kg: weight, age, preferences
       });
-      setUser(res.data);
-      // ✅ Fix : idem — is_admin depuis le backend
-      setIsAdmin(!!res.data.is_admin);
+      const userData = res.data;
+      
+      setUser(userData);
+      setIsAdmin(!!userData.is_admin);
+      
+      // ✅ Sauvegarde dans le navigateur
+      localStorage.setItem('baros_user', JSON.stringify(userData));
+      
       setFavorites([]);
       return true;
     } catch (error) {
@@ -93,6 +109,8 @@ export const UserProvider = ({ children }) => {
     setUser(null);
     setFavorites([]);
     setIsAdmin(false);
+    // ✅ On vide le stockage local
+    localStorage.removeItem('baros_user');
   };
 
   return (

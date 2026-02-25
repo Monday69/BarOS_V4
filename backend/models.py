@@ -148,9 +148,11 @@ class User(Base):
     preferences = Column(JSON,    default={})
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
     is_admin    = Column(Boolean, default=False, nullable=False)
+    balance     = Column(Float,   default=0.0,   nullable=False)  # solde en €
 
-    history   = relationship("OrderHistory", back_populates="user")
-    favorites = relationship("UserFavorite", back_populates="user")
+    history      = relationship("OrderHistory",      back_populates="user")
+    favorites    = relationship("UserFavorite",      back_populates="user")
+    transactions = relationship("PaymentTransaction", back_populates="user")
 
 
 class OrderHistory(Base):
@@ -167,6 +169,7 @@ class OrderHistory(Base):
     # Stocké ici pour que l'historique reste cohérent même si le prix
     # de la bouteille change plus tard (ex: promo, nouvelle marque).
     cost_price = Column(Float, nullable=True, default=None)
+    sale_price = Column(Float, nullable=True, default=None)  # prix débité au moment de la commande
 
     user   = relationship("User",   back_populates="history")
     recipe = relationship("Recipe", back_populates="history")
@@ -182,3 +185,23 @@ class UserFavorite(Base):
 
     user   = relationship("User",   back_populates="favorites")
     recipe = relationship("Recipe", back_populates="favorites")
+
+
+class PaymentTransaction(Base):
+    """
+    Historique de toutes les transactions Stripe et recharges manuelles.
+    Permet l'audit complet et la réconciliation comptable.
+    """
+    __tablename__ = "payment_transactions"
+
+    id                 = Column(Integer, primary_key=True, index=True)
+    user_id            = Column(Integer, ForeignKey("users.id"), nullable=False)
+    amount             = Column(Float,   nullable=False)               # montant en €
+    type               = Column(String,  nullable=False)               # "stripe" | "manual" | "debit"
+    status             = Column(String,  default="pending")            # "pending" | "completed" | "failed"
+    stripe_session_id  = Column(String,  nullable=True, unique=True)   # Checkout Session ID
+    stripe_payment_id  = Column(String,  nullable=True)                # PaymentIntent ID
+    description        = Column(String,  nullable=True)
+    created_at         = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="transactions")

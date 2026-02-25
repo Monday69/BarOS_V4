@@ -4,11 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   LogOut, Activity, ShieldCheck, AlertTriangle, Car, Wine,
   User as UserIcon, Star, Zap, Flame, Droplets,
-  Clock, ChevronRight, BarChart2, Sparkles, Euro, TrendingUp, TrendingDown, Minus, Percent, Save, BarChart3
+  Clock, ChevronRight, BarChart2, Sparkles, Euro, TrendingUp, TrendingDown,
+  Minus, Percent, Save, BarChart3, Wallet, CreditCard, ToggleLeft, ToggleRight, Plus
 } from 'lucide-react';
 import axios from 'axios';
 
-const API = 'http://localhost:8000/api/users';
+const API       = 'http://localhost:8000/api/users';
+const ADMIN_API = 'http://localhost:8000/api/admin';
+const PAY_API   = 'http://localhost:8000/api/payments';
 
 // ─── Composants utilitaires ───────────────────────────────────────────────────
 
@@ -22,9 +25,7 @@ function StatCard({ icon, label, value, sub, color = 'blue' }) {
   };
   return (
     <div className={`flex items-center gap-4 p-4 rounded-2xl border ${colors[color]}`}>
-      <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${colors[color]}`}>
-        {icon}
-      </div>
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${colors[color]}`}>{icon}</div>
       <div>
         <div className="text-lg font-bold text-white leading-tight">{value}</div>
         <div className="text-xs text-gray-500">{label}</div>
@@ -42,9 +43,7 @@ function StarRating({ value, onChange }) {
         <button key={n} onClick={() => onChange(n)}
           onMouseEnter={() => setHovered(n)} onMouseLeave={() => setHovered(0)}
           className="transition-transform hover:scale-125">
-          <Star size={16} className={`transition-colors ${
-            n <= (hovered || value) ? 'text-amber-400 fill-amber-400' : 'text-gray-600'
-          }`} />
+          <Star size={16} className={`transition-colors ${n <= (hovered || value) ? 'text-amber-400 fill-amber-400' : 'text-gray-600'}`} />
         </button>
       ))}
     </div>
@@ -54,13 +53,102 @@ function StarRating({ value, onChange }) {
 function SectionTitle({ icon, title, subtitle }) {
   return (
     <div className="flex items-start gap-3 mb-6">
-      <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center text-gray-400 mt-0.5">
-        {icon}
-      </div>
+      <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center text-gray-400 mt-0.5">{icon}</div>
       <div>
         <h2 className="text-xl font-bold text-white">{title}</h2>
         {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
       </div>
+    </div>
+  );
+}
+
+// ─── Carte solde (visible par tous les users) ─────────────────────────────────
+
+function SoldeCard({ userId, navigate }) {
+  const [balance,  setBalance]  = useState(null);
+  const [history,  setHistory]  = useState([]);
+  const [expanded, setExpanded] = useState(false);
+  const [loading,  setLoading]  = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      axios.get(`${PAY_API}/balance/${userId}`),
+      axios.get(`${PAY_API}/transactions/${userId}?limit=5`),
+    ]).then(([balRes, txRes]) => {
+      setBalance(balRes.data.balance);
+      setHistory(txRes.data);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [userId]);
+
+  const typeLabel = (t) => {
+    if (t.type === 'stripe') return '💳 Recharge Stripe';
+    if (t.type === 'manual') return '🤝 Recharge admin';
+    if (t.type === 'debit')  return '🍹 Cocktail';
+    return t.type;
+  };
+
+  return (
+    <div className="bg-[#111] rounded-3xl border border-white/[0.08] overflow-hidden">
+      {/* Ligne principale */}
+      <button
+        onClick={() => setExpanded(o => !o)}
+        className="w-full flex items-center justify-between p-7 hover:bg-white/[0.02] transition-colors"
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+            <Wallet size={22} className="text-violet-400" />
+          </div>
+          <div className="text-left">
+            <div className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-0.5">Mon solde</div>
+            {loading ? (
+              <div className="h-8 w-24 bg-white/5 rounded animate-pulse" />
+            ) : (
+              <div className={`text-3xl font-black tabular-nums ${balance > 0 ? 'text-white' : 'text-gray-500'}`}>
+                {balance?.toFixed(2) ?? '—'} <span className="text-lg text-violet-400">€</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={e => { e.stopPropagation(); navigate('/payment', { state: { userId } }); }}
+            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500
+                       text-white text-sm font-bold rounded-xl transition-all"
+          >
+            <Plus size={14} /> Recharger
+          </button>
+          <ChevronRight size={16} className={`text-gray-600 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+        </div>
+      </button>
+
+      {/* Historique transactions */}
+      {expanded && (
+        <div className="border-t border-white/[0.06] px-7 pb-5 pt-4">
+          <div className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-3">
+            Dernières transactions
+          </div>
+          {history.length === 0 ? (
+            <div className="text-gray-600 text-sm text-center py-4">Aucune transaction.</div>
+          ) : (
+            <div className="space-y-2">
+              {history.map(tx => (
+                <div key={tx.id} className="flex items-center justify-between px-4 py-3
+                                             bg-white/[0.02] border border-white/[0.05] rounded-xl">
+                  <div>
+                    <div className="text-white text-sm font-semibold">{typeLabel(tx)}</div>
+                    <div className="text-gray-600 text-xs mt-0.5">
+                      {new Date(tx.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  <span className={`font-mono font-black text-sm ${tx.amount > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)} €
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -87,36 +175,28 @@ function AlcoolemieSection({ userId }) {
       <SectionTitle icon={<Activity size={18} />} title="Alcoolémie en temps réel"
         subtitle="Formule de Widmark · Mise à jour à chaque visite" />
       {loading ? (
-        <div className="h-32 flex items-center justify-center text-gray-600 text-sm animate-pulse">
-          Calcul métabolique…
-        </div>
+        <div className="h-32 flex items-center justify-center text-gray-600 text-sm animate-pulse">Calcul métabolique…</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className={`rounded-2xl p-6 border flex flex-col items-center text-center gap-4 ${
-            canDrive ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'
-          }`}>
+          <div className={`rounded-2xl p-6 border flex flex-col items-center text-center gap-4 ${canDrive ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
             <div className="text-xs text-gray-500 uppercase tracking-widest font-semibold">Taux estimé</div>
             <div className={`text-6xl font-black tabular-nums ${canDrive ? 'text-emerald-400' : 'text-red-400'}`}>
-              {(bac ?? 0).toFixed(2)}
-              <span className="text-xl text-gray-500 font-normal ml-1">g/L</span>
+              {(bac ?? 0).toFixed(2)}<span className="text-xl text-gray-500 font-normal ml-1">g/L</span>
             </div>
             <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
-              <div className={`h-full rounded-full transition-all duration-1000 ${canDrive ? 'bg-emerald-500' : 'bg-red-500'}`}
-                style={{ width: `${pct}%` }} />
+              <div className={`h-full rounded-full transition-all duration-1000 ${canDrive ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: `${pct}%` }} />
             </div>
             <div className="flex justify-between w-full text-xs text-gray-600">
               <span>0.0</span><span>0.5 ⚠️</span><span>1.0</span><span>1.5</span>
             </div>
-            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold ${
-              canDrive ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'
-            }`}>
+            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold ${canDrive ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>
               {canDrive ? <ShieldCheck size={16} /> : <AlertTriangle size={16} />}
               {data?.status ?? '—'}
             </div>
           </div>
           <div className="flex flex-col justify-center gap-4">
-            <StatCard icon={<Wine size={18} />}  label="Commandés ce soir"        value={`${data?.drinks_count ?? 0} verres`} color="purple" />
-            <StatCard icon={<Clock size={18} />} label="Depuis le premier verre"  value={data?.hours_since_first_drink != null ? `${data.hours_since_first_drink}h` : '—'} color="blue" />
+            <StatCard icon={<Wine size={18} />}  label="Commandés ce soir"         value={`${data?.drinks_count ?? 0} verres`} color="purple" />
+            <StatCard icon={<Clock size={18} />} label="Depuis le premier verre"   value={data?.hours_since_first_drink != null ? `${data.hours_since_first_drink}h` : '—'} color="blue" />
             <StatCard icon={<Car size={18} />}   label="Conduite (limite 0.5 g/L)" value={canDrive ? 'Autorisé ✓' : 'Interdit ✗'} color={canDrive ? 'emerald' : 'rose'} />
           </div>
         </div>
@@ -126,12 +206,10 @@ function AlcoolemieSection({ userId }) {
 }
 
 // ─── Section Dépenses ─────────────────────────────────────────────────────────
-// Affiche : total soirée, prix moyen par cocktail, détail par commande,
-// comparaison avec la soirée précédente.
 
 function DepensesSection({ userId }) {
-  const [data, setData]       = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData]           = useState(null);
+  const [loading, setLoading]     = useState(true);
   const [showDetail, setShowDetail] = useState(false);
 
   useEffect(() => {
@@ -144,16 +222,13 @@ function DepensesSection({ userId }) {
   if (loading) return (
     <div className="bg-[#111] rounded-3xl p-7 border border-white/[0.08]">
       <SectionTitle icon={<Euro size={18} />} title="Dépenses" />
-      <div className="h-32 flex items-center justify-center text-gray-600 text-sm animate-pulse">
-        Calcul des dépenses…
-      </div>
+      <div className="h-32 flex items-center justify-center text-gray-600 text-sm animate-pulse">Calcul des dépenses…</div>
     </div>
   );
 
   if (!data || data.total_tonight === 0) return (
     <div className="bg-[#111] rounded-3xl p-7 border border-white/[0.08]">
-      <SectionTitle icon={<Euro size={18} />} title="Dépenses"
-        subtitle="Coût de revient des cocktails commandés" />
+      <SectionTitle icon={<Euro size={18} />} title="Dépenses" subtitle="Coût de revient des cocktails commandés" />
       <div className="text-center text-gray-600 py-10 text-sm">
         Aucune dépense enregistrée ce soir.<br />
         <span className="text-gray-700 text-xs">Les prix s'affichent quand les bouteilles ont un prix renseigné.</span>
@@ -161,72 +236,42 @@ function DepensesSection({ userId }) {
     </div>
   );
 
-  // Comparaison avec soirée précédente
-  const diff        = data.total_tonight - (data.prev_session_total ?? 0);
-  const hasPrev     = data.prev_session_total != null;
-  const TrendIcon   = diff > 0.01 ? TrendingUp : diff < -0.01 ? TrendingDown : Minus;
-  const trendColor  = diff > 0.01 ? 'text-red-400' : diff < -0.01 ? 'text-emerald-400' : 'text-gray-400';
+  const diff       = data.total_tonight - (data.prev_session_total ?? 0);
+  const hasPrev    = data.prev_session_total != null;
+  const TrendIcon  = diff > 0.01 ? TrendingUp : diff < -0.01 ? TrendingDown : Minus;
+  const trendColor = diff > 0.01 ? 'text-red-400' : diff < -0.01 ? 'text-emerald-400' : 'text-gray-400';
 
   return (
     <div className="bg-[#111] rounded-3xl p-7 border border-white/[0.08]">
-      <SectionTitle icon={<Euro size={18} />} title="Dépenses"
-        subtitle="Coût de revient des cocktails commandés" />
-
-      {/* Chiffres clés */}
+      <SectionTitle icon={<Euro size={18} />} title="Dépenses" subtitle="Coût de revient des cocktails commandés" />
       <div className="grid grid-cols-2 gap-4 mb-6">
-        {/* Total soirée */}
         <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5 text-center">
-          <div className="text-xs text-emerald-400 font-bold uppercase tracking-widest mb-1">
-            Total ce soir
-          </div>
-          <div className="text-4xl font-black text-white tabular-nums">
-            {data.total_tonight.toFixed(2)}
-            <span className="text-lg text-emerald-400 ml-1">€</span>
-          </div>
+          <div className="text-xs text-emerald-400 font-bold uppercase tracking-widest mb-1">Total ce soir</div>
+          <div className="text-4xl font-black text-white tabular-nums">{data.total_tonight.toFixed(2)}<span className="text-lg text-emerald-400 ml-1">€</span></div>
           <div className="text-xs text-gray-600 mt-1">{data.count_tonight} cocktail{data.count_tonight > 1 ? 's' : ''}</div>
         </div>
-
-        {/* Prix moyen */}
         <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5 text-center">
-          <div className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">
-            Prix moyen
-          </div>
-          <div className="text-4xl font-black text-white tabular-nums">
-            {data.avg_tonight.toFixed(2)}
-            <span className="text-lg text-gray-500 ml-1">€</span>
-          </div>
+          <div className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Prix moyen</div>
+          <div className="text-4xl font-black text-white tabular-nums">{data.avg_tonight.toFixed(2)}<span className="text-lg text-gray-500 ml-1">€</span></div>
           <div className="text-xs text-gray-600 mt-1">par cocktail</div>
         </div>
       </div>
-
-      {/* Comparaison soirée précédente */}
       {hasPrev && (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border mb-5
-          ${diff > 0.01 ? 'bg-red-500/5 border-red-500/15' : diff < -0.01 ? 'bg-emerald-500/5 border-emerald-500/15' : 'bg-white/5 border-white/10'}`}>
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border mb-5 ${diff > 0.01 ? 'bg-red-500/5 border-red-500/15' : diff < -0.01 ? 'bg-emerald-500/5 border-emerald-500/15' : 'bg-white/5 border-white/10'}`}>
           <TrendIcon size={16} className={trendColor} />
-          <span className="text-sm text-gray-400">
-            Soirée précédente : <span className="text-white font-bold">{data.prev_session_total.toFixed(2)} €</span>
-          </span>
-          <span className={`ml-auto text-sm font-bold ${trendColor}`}>
-            {diff > 0 ? '+' : ''}{diff.toFixed(2)} €
-          </span>
+          <span className="text-sm text-gray-400">Soirée précédente : <span className="text-white font-bold">{data.prev_session_total.toFixed(2)} €</span></span>
+          <span className={`ml-auto text-sm font-bold ${trendColor}`}>{diff > 0 ? '+' : ''}{diff.toFixed(2)} €</span>
         </div>
       )}
-
-      {/* Détail par cocktail */}
-      <button
-        onClick={() => setShowDetail(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-white/[0.03]
-                   hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors mb-2">
+      <button onClick={() => setShowDetail(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors mb-2">
         <span className="text-sm font-bold text-gray-400">Détail par cocktail</span>
         <ChevronRight size={14} className={`text-gray-600 transition-transform ${showDetail ? 'rotate-90' : ''}`} />
       </button>
-
       {showDetail && data.orders?.length > 0 && (
         <div className="space-y-2 mt-1">
           {data.orders.map((o, i) => (
-            <div key={i} className="flex items-center justify-between px-4 py-3
-                                    bg-white/[0.02] border border-white/[0.05] rounded-xl">
+            <div key={i} className="flex items-center justify-between px-4 py-3 bg-white/[0.02] border border-white/[0.05] rounded-xl">
               <div>
                 <div className="text-white text-sm font-semibold">{o.recipe_name ?? '—'}</div>
                 <div className="text-gray-600 text-xs mt-0.5">{o.time}</div>
@@ -262,20 +307,16 @@ function StatsSection({ userId }) {
   return (
     <div className="bg-[#111] rounded-3xl p-7 border border-white/[0.08]">
       <div className="flex items-start justify-between mb-6">
-        <SectionTitle icon={<BarChart2 size={18} />} title="Statistiques de consommation"
-          subtitle={`Sur les ${period} derniers jours`} />
+        <SectionTitle icon={<BarChart2 size={18} />} title="Statistiques de consommation" subtitle={`Sur les ${period} derniers jours`} />
         <div className="flex gap-1 bg-white/5 p-1 rounded-xl shrink-0">
           {[7, 30, 90].map(p => (
             <button key={p} onClick={() => setPeriod(p)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                period === p ? 'bg-white/15 text-white' : 'text-gray-500 hover:text-gray-300'
-              }`}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${period === p ? 'bg-white/15 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
               {p}j
             </button>
           ))}
         </div>
       </div>
-
       {loading ? (
         <div className="h-32 flex items-center justify-center text-gray-600 text-sm animate-pulse">Chargement…</div>
       ) : !data || data.total_orders === 0 ? (
@@ -283,12 +324,11 @@ function StatsSection({ userId }) {
       ) : (
         <div className="space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard icon={<Wine size={18} />}     label="Verres"        value={data.total_orders}                  color="purple" />
-            <StatCard icon={<Flame size={18} />}    label="Calories"      value={`${data.total_kcal ?? 0} kcal`}     color="amber"  />
-            <StatCard icon={<Droplets size={18} />} label="Sucre"         value={`${data.total_sugar_g ?? 0} g`}     color="blue"   />
+            <StatCard icon={<Wine size={18} />}     label="Verres"        value={data.total_orders}              color="purple" />
+            <StatCard icon={<Flame size={18} />}    label="Calories"      value={`${data.total_kcal ?? 0} kcal`} color="amber" />
+            <StatCard icon={<Droplets size={18} />} label="Sucre"         value={`${data.total_sugar_g ?? 0} g`} color="blue" />
             <StatCard icon={<Zap size={18} />}      label="Unités alcool" value={data.total_alcohol_units} sub="1 unité = 10g" color="rose" />
           </div>
-
           {data.average_rating && (
             <div className="flex items-center gap-3 bg-amber-500/5 border border-amber-500/15 rounded-2xl px-5 py-4">
               <Star size={18} className="text-amber-400 fill-amber-400" />
@@ -296,7 +336,6 @@ function StatsSection({ userId }) {
               <span className="text-gray-500 text-sm">Moyenne de tes notes</span>
             </div>
           )}
-
           {data.top_cocktails?.length > 0 && (
             <div>
               <div className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-3">Tes favoris du moment</div>
@@ -311,18 +350,15 @@ function StatsSection({ userId }) {
               </div>
             </div>
           )}
-
           {data.category_breakdown && Object.keys(data.category_breakdown).length > 0 && (
             <div>
               <div className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-3">Par catégorie</div>
               <div className="flex flex-wrap gap-2">
-                {Object.entries(data.category_breakdown)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([cat, count]) => (
-                    <span key={cat} className="bg-white/5 border border-white/[0.08] text-gray-300 text-xs px-3 py-1.5 rounded-full">
-                      {cat} · <span className="text-gray-500">{count}</span>
-                    </span>
-                  ))}
+                {Object.entries(data.category_breakdown).sort((a, b) => b[1] - a[1]).map(([cat, count]) => (
+                  <span key={cat} className="bg-white/5 border border-white/[0.08] text-gray-300 text-xs px-3 py-1.5 rounded-full">
+                    {cat} · <span className="text-gray-500">{count}</span>
+                  </span>
+                ))}
               </div>
             </div>
           )}
@@ -334,10 +370,7 @@ function StatsSection({ userId }) {
 
 // ─── Section Historique + Notation ───────────────────────────────────────────
 
-const formatDate = (ts) => {
-  const d = new Date(ts);
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-};
+const formatDate = (ts) => new Date(ts).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 function HistoriqueSection({ userId }) {
   const [orders, setOrders]         = useState([]);
@@ -367,9 +400,7 @@ function HistoriqueSection({ userId }) {
 
   return (
     <div className="bg-[#111] rounded-3xl p-7 border border-white/[0.08]">
-      <SectionTitle icon={<Clock size={18} />} title="Historique récent"
-        subtitle="30 derniers jours · Note tes verres directement" />
-
+      <SectionTitle icon={<Clock size={18} />} title="Historique récent" subtitle="30 derniers jours · Note tes verres directement" />
       {loading ? (
         <div className="h-32 flex items-center justify-center text-gray-600 text-sm animate-pulse">Chargement…</div>
       ) : orders.length === 0 ? (
@@ -377,39 +408,29 @@ function HistoriqueSection({ userId }) {
       ) : (
         <div className="space-y-2">
           {orders.map(order => (
-            <div key={order.id}
-              className="flex items-center justify-between gap-4 bg-white/[0.03] hover:bg-white/5
-                         transition-colors rounded-2xl px-5 py-4 border border-white/5">
+            <div key={order.id} className="flex items-center justify-between gap-4 bg-white/[0.03] hover:bg-white/5 transition-colors rounded-2xl px-5 py-4 border border-white/5">
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-white truncate">{order.recipe?.name ?? '—'}</div>
                 <div className="flex items-center gap-3 mt-0.5">
                   <span className="text-xs text-gray-600">{formatDate(order.timestamp)}</span>
                   {order.cost_price != null && (
-                    <span className="text-xs text-emerald-400 font-mono font-bold">
-                      {order.cost_price.toFixed(2)} €
-                    </span>
+                    <span className="text-xs text-emerald-400 font-mono font-bold">{order.cost_price.toFixed(2)} €</span>
                   )}
                 </div>
               </div>
               <div className="shrink-0">
-                {submitting[order.id] ? (
-                  <span className="text-xs text-gray-600 animate-pulse">Sauvegarde…</span>
-                ) : (
-                  <StarRating value={order.rating ?? 0} onChange={(r) => submitRating(order.id, r)} />
-                )}
+                {submitting[order.id]
+                  ? <span className="text-xs text-gray-600 animate-pulse">Sauvegarde…</span>
+                  : <StarRating value={order.rating ?? 0} onChange={r => submitRating(order.id, r)} />}
               </div>
             </div>
           ))}
           <div className="flex justify-between items-center pt-3">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              className="text-xs text-gray-500 hover:text-white disabled:opacity-30 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">
-              ← Précédent
-            </button>
+              className="text-xs text-gray-500 hover:text-white disabled:opacity-30 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">← Précédent</button>
             <span className="text-xs text-gray-600">Page {page}</span>
             <button onClick={() => setPage(p => p + 1)} disabled={!hasMore}
-              className="text-xs text-gray-500 hover:text-white disabled:opacity-30 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">
-              Suivant →
-            </button>
+              className="text-xs text-gray-500 hover:text-white disabled:opacity-30 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">Suivant →</button>
           </div>
         </div>
       )}
@@ -435,20 +456,15 @@ function RecoSection({ userId }) {
     <div className="bg-[#111] rounded-3xl p-7 border border-white/[0.08]">
       <SectionTitle icon={<Sparkles size={18} />} title="Pour toi ce soir"
         subtitle={data?.mode === 'personnalisé' ? `Basé sur ${data.based_on_orders} commandes · Personnalisé` : 'Sélection populaire'} />
-
       {loading ? (
-        <div className="h-32 flex items-center justify-center text-gray-600 text-sm animate-pulse">
-          Analyse de tes goûts…
-        </div>
+        <div className="h-32 flex items-center justify-center text-gray-600 text-sm animate-pulse">Analyse de tes goûts…</div>
       ) : !data?.recommendations?.length ? (
         <div className="text-center text-gray-600 py-10 text-sm">Aucune recommandation disponible.</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {data.recommendations.map(reco => (
             <div key={reco.id} onClick={() => navigate(`/cocktail/${reco.id}`)}
-              className="group relative bg-white/[0.03] hover:bg-white/[0.06] border
-                         border-white/[0.06] hover:border-white/[0.15] rounded-2xl p-5
-                         transition-all cursor-pointer overflow-hidden">
+              className="group relative bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] hover:border-white/[0.15] rounded-2xl p-5 transition-all cursor-pointer overflow-hidden">
               {reco.image_url && (
                 <div className="absolute inset-0 opacity-5 group-hover:opacity-10 transition-opacity bg-cover bg-center rounded-2xl"
                   style={{ backgroundImage: `url(${reco.image_url})` }} />
@@ -475,74 +491,276 @@ function RecoSection({ userId }) {
   );
 }
 
-// ─── Page principale ──────────────────────────────────────────────────────────
-
-export default function ProfilePage() {
-  const { user, logout } = useUser();
-  const [adminStats,   setAdminStats]   = useState(null);
-  const [margin,       setMargin]       = useState(0);
-  const [marginInput,  setMarginInput]  = useState(0);
+function EspacePatron() {
+  const [adminStats, setAdminStats] = useState(null);
+  const [margin, setMargin] = useState(0);
+  const [marginInput, setMarginInput] = useState(0);
   const [marginSaving, setMarginSaving] = useState(false);
-  const [marginSaved,  setMarginSaved]  = useState(false);
+  const [marginSaved, setMarginSaved] = useState(false);
+  const [requirePay, setRequirePay] = useState(false);
+  const [toggleSaving, setToggleSaving] = useState(false);
+  const [rechargeUser, setRechargeUser] = useState('');
+  const [rechargeAmt, setRechargeAmt] = useState(10);
+  const [rechargeSaving, setRechargeSaving] = useState(false);
+  const [rechargeMsg, setRechargeMsg] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
-  const ADMIN_API = API.replace('/users', '/admin');
+  const ADMIN_KEY = "BarOS_Admin_Secret";
 
   useEffect(() => {
-    if (!user?.is_admin) return;
-    axios.get(`${API}/${user.id}/admin-stats`)
-      .then(res => setAdminStats(res.data))
-      .catch(err => console.error("Erreur stats admin:", err));
-    axios.get(`${ADMIN_API}/margin`)
-      .then(res => { setMargin(res.data.margin_percent); setMarginInput(res.data.margin_percent); })
-      .catch(err => console.error("Erreur marge:", err));
-  }, [user]);
+    // Stats admin
+    axios.get(`${API}/0/admin-stats`).then(r => setAdminStats(r.data)).catch(() => {});
+    
+    // Marge
+    axios.get(`${ADMIN_API}/margin`).then(r => {
+      setMargin(r.data.margin_percent);
+      setMarginInput(r.data.margin_percent);
+    }).catch(() => {});
+    
+    // Config paiement
+    axios.get(`${PAY_API}/config`).then(r => setRequirePay(r.data.require_payment)).catch(() => {});
+    
+    // Charger les utilisateurs
+    setLoadingUsers(true);
+    axios.get(`http://localhost:8000/api/users/`, {
+      headers: { 'x-admin-token': ADMIN_KEY }
+    })
+      .then(r => {
+        setUsers(r.data);
+        console.log("✅ Utilisateurs chargés:", r.data);
+      })
+      .catch(err => {
+        console.error("❌ Erreur chargement utilisateurs:", err);
+      })
+      .finally(() => setLoadingUsers(false));
+  }, []);
 
-  const handleSaveMargin = async () => {
-    const pwd = window.prompt("Clé admin pour modifier la marge :");
+  const saveMargin = async () => {
+    const pwd = window.prompt("Clé admin :");
     if (!pwd) return;
     setMarginSaving(true);
     try {
-      const res = await axios.put(`${ADMIN_API}/margin`,
-        { margin_percent: parseFloat(marginInput) },
-        { headers: { 'x-admin-token': pwd } }
-      );
-      setMargin(res.data.margin_percent);
+      const r = await axios.put(`${ADMIN_API}/margin`, { margin_percent: parseFloat(marginInput) }, { headers: { 'x-admin-token': pwd } });
+      setMargin(r.data.margin_percent);
       setMarginSaved(true);
       setTimeout(() => setMarginSaved(false), 2500);
-    } catch { alert("❌ Clé invalide ou erreur serveur."); }
+    } catch { alert("❌ Clé invalide"); }
     finally { setMarginSaving(false); }
   };
 
+  const toggleRequirePay = async () => {
+    const pwd = window.prompt("Clé admin pour modifier le mode paiement :");
+    if (!pwd) return;
+    setToggleSaving(true);
+    try {
+      await axios.put(`${ADMIN_API}/payment-config`, { require_payment: !requirePay }, { headers: { 'x-admin-token': pwd } });
+      setRequirePay(r => !r);
+    } catch { alert("❌ Clé invalide"); }
+    finally { setToggleSaving(false); }
+  };
+
+  const doManualRecharge = async () => {
+    if (!rechargeUser || rechargeAmt <= 0) return;
+    const pwd = window.prompt("Clé admin pour confirmer la recharge :");
+    if (!pwd) return;
+    setRechargeSaving(true);
+    try {
+      const r = await axios.post(`${PAY_API}/manual-recharge`,
+        { user_id: parseInt(rechargeUser), amount: rechargeAmt, description: "Recharge manuelle admin" },
+        { headers: { 'x-admin-token': pwd } }
+      );
+      setRechargeMsg(`✅ ${r.data.user} → ${r.data.new_balance.toFixed(2)} €`);
+      setTimeout(() => setRechargeMsg(null), 4000);
+    } catch { alert("❌ Erreur recharge"); }
+    finally { setRechargeSaving(false); }
+  };
+
   const handleClearHistory = async () => {
-    const pwd = window.prompt("Zone Danger ⚠️ : Entrez le mot de passe Admin pour purger l'historique :");
+    const pwd = window.prompt("Zone Danger ⚠️ : Mot de passe Admin pour purger l'historique :");
     if (!pwd) return;
     try {
       await axios.delete(`${ADMIN_API}/clear-history`, { headers: { 'x-admin-token': pwd } });
-      alert("✅ Base de données purgée avec succès !");
+      alert("✅ Base de données purgée !");
       setAdminStats({ total_orders: 0, total_revenue: 0, total_cost: 0, total_margin: 0 });
-    } catch (err) {
-      alert("❌ Échec : Mauvais mot de passe ou route introuvable.");
-      console.error("Erreur de suppression:", err);
-    }
+    } catch { alert("❌ Mauvais mot de passe."); }
   };
 
   const handleExportCSV = async () => {
-    const pwd = window.prompt("Entrez le mot de passe Admin pour exporter la comptabilité :");
+    const pwd = window.prompt("Mot de passe Admin pour exporter :");
     if (!pwd) return;
     try {
-      const res = await axios.get(`${ADMIN_API}/export/csv`, {
-        headers: { 'x-admin-token': pwd }, responseType: 'blob'
-      });
+      const res = await axios.get(`${ADMIN_API}/export/csv`, { headers: { 'x-admin-token': pwd }, responseType: 'blob' });
       const url  = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href  = url;
       link.setAttribute('download', `BarOS_Compta_${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link); link.click(); link.remove();
-    } catch (err) {
-      alert("❌ Échec de l'export. Vérifie ton mot de passe !");
-      console.error("Erreur d'export:", err);
-    }
+    } catch { alert("❌ Échec de l'export."); }
   };
+
+  return (
+    <div className="bg-gradient-to-br from-emerald-900/30 to-teal-900/30 border border-emerald-500/30 rounded-3xl p-6 md:p-8 relative overflow-hidden shadow-lg shadow-emerald-900/20">
+      <div className="absolute -top-10 -right-10 text-emerald-500/10 rotate-12"><TrendingUp size={150} /></div>
+      <div className="relative z-10 space-y-6">
+
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-2xl font-black text-emerald-400 flex items-center gap-3">
+            <BarChart3 size={28} /> Espace Patron
+          </h2>
+          <div className="flex gap-3">
+            <button onClick={handleExportCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/40 border border-emerald-500/50 text-emerald-300 rounded-xl text-sm font-bold transition-all">
+              <Euro size={16} /> Exporter .CSV
+            </button>
+            <button onClick={handleClearHistory}
+              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-sm font-bold transition-all">
+              <AlertTriangle size={16} /> Remise à zéro
+            </button>
+          </div>
+        </div>
+
+        {/* Stats financières */}
+        {adminStats && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
+              <div className="text-white/40 text-xs font-bold uppercase tracking-wider mb-2">Chiffre d'Affaires</div>
+              <div className="text-3xl font-black text-white">{Number(adminStats.total_revenue).toFixed(2)} <span className="text-lg text-emerald-400">€</span></div>
+            </div>
+            <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
+              <div className="text-white/40 text-xs font-bold uppercase tracking-wider mb-2">Coût Ingrédients</div>
+              <div className="text-3xl font-black text-white">{Number(adminStats.total_cost).toFixed(2)} <span className="text-lg text-red-400">€</span></div>
+            </div>
+            <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-2xl">
+              <div className="text-emerald-500/60 text-xs font-bold uppercase tracking-wider mb-2">Bénéfice Net</div>
+              <div className="text-3xl font-black text-emerald-400">{Number(adminStats.total_margin).toFixed(2)} <span className="text-lg">€</span></div>
+            </div>
+            <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
+              <div className="text-white/40 text-xs font-bold uppercase tracking-wider mb-2">Verres Servis</div>
+              <div className="text-3xl font-black text-white">{adminStats.total_orders} <span className="text-lg text-blue-400">🍹</span></div>
+            </div>
+          </div>
+        )}
+
+        {/* Toggle Paiement requis */}
+        <div className="bg-black/30 border border-white/5 rounded-2xl p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-bold text-white mb-1">
+                <CreditCard size={15} className="text-violet-400" />
+                Paiement requis pour commander
+              </div>
+              <p className="text-white/30 text-xs">
+                {requirePay
+                  ? '✅ Activé — le solde est débité à chaque commande'
+                  : '⭕ Désactivé — mode libre, pas de débit'}
+              </p>
+            </div>
+            <button onClick={toggleRequirePay} disabled={toggleSaving} className="shrink-0 ml-4">
+              {requirePay
+                ? <ToggleRight size={44} className="text-emerald-400" />
+                : <ToggleLeft  size={44} className="text-gray-600" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Recharge manuelle */}
+        <div className="bg-black/30 border border-white/5 rounded-2xl p-5">
+          <div className="flex items-center gap-2 text-sm font-bold text-white mb-4">
+            <Wallet size={15} className="text-violet-400" /> Recharge manuelle
+          </div>
+          
+          {loadingUsers ? (
+            <div className="text-center py-4 text-gray-500 animate-pulse">
+              Chargement des utilisateurs...
+            </div>
+          ) : users.length === 0 ? (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm mb-4">
+              ❌ Aucun utilisateur trouvé dans la base de données
+            </div>
+          ) : (
+            <div className="flex gap-2 mb-3">
+              <select 
+                value={rechargeUser} 
+                onChange={e => setRechargeUser(e.target.value)}
+                className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-violet-500/50 cursor-pointer"
+              >
+                <option value="" className="bg-[#111] text-gray-400">Choisir un utilisateur…</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id} className="bg-[#1a1a1a] text-white">
+                    {u.name} - {u.balance?.toFixed(2)}€
+                  </option>
+                ))}
+              </select>
+              <select 
+                value={rechargeAmt} 
+                onChange={e => setRechargeAmt(Number(e.target.value))}
+                className="w-24 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-violet-500/50 cursor-pointer"
+              >
+                {[5, 10, 20, 50, 100].map(a => (
+                  <option key={a} value={a} className="bg-[#1a1a1a] text-emerald-400">
+                    {a} €
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          
+          <button 
+            onClick={doManualRecharge} 
+            disabled={!rechargeUser || rechargeSaving || users.length === 0}
+            className="w-full py-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(124,58,237,0.2)]"
+          >
+            <Plus size={15} /> 
+            {rechargeSaving ? 'Traitement…' : `Créditer ${rechargeAmt} €`}
+          </button>
+          
+          {rechargeMsg && (
+            <p className="text-emerald-400 text-xs text-center font-bold mt-2 animate-pulse">
+              {rechargeMsg}
+            </p>
+          )}
+        </div>
+        
+        {/* Slider Marge */}
+        <div className="bg-black/30 border border-white/5 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Percent size={16} className="text-emerald-400" />
+              <span className="text-sm font-bold text-white">Marge sur les cocktails</span>
+            </div>
+            <span className={`text-xs font-bold px-2 py-1 rounded-full transition-all ${marginSaved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/40'}`}>
+              {marginSaved ? '✅ Sauvegardé' : `Actuelle : ${margin}%`}
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <input type="range" min="0" max="200" step="5" value={marginInput}
+              onChange={e => setMarginInput(Number(e.target.value))}
+              className="flex-1 h-2 rounded-full appearance-none cursor-pointer accent-emerald-500" />
+            <span className="text-white font-black text-xl w-16 text-right tabular-nums">{marginInput}%</span>
+          </div>
+          <div className="flex items-center justify-between mt-3">
+            <p className="text-white/25 text-xs">
+              Ex : 1 € coût → {(1 * (1 + marginInput / 100)).toFixed(2)} € prix client
+            </p>
+            <button onClick={saveMargin} disabled={marginSaving || marginInput === margin}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl transition-all">
+              <Save size={13} /> {marginSaving ? 'Sauvegarde…' : 'Appliquer'}
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// ─── Page principale ──────────────────────────────────────────────────────────
+
+export default function ProfilePage() {
+  const { user, logout } = useUser();
+  const navigate         = useNavigate();
 
   if (!user) return (
     <div className="h-screen w-full bg-[#0a0a0a] flex flex-col items-center justify-center text-white gap-4">
@@ -574,9 +792,7 @@ export default function ProfilePage() {
               <h1 className="text-3xl font-black text-white">{user.name}</h1>
               <div className="flex gap-2 mt-2 flex-wrap">
                 {profileTags.map(tag => (
-                  <span key={tag} className="text-xs text-gray-500 bg-white/5 px-3 py-1 rounded-full border border-white/5">
-                    {tag}
-                  </span>
+                  <span key={tag} className="text-xs text-gray-500 bg-white/5 px-3 py-1 rounded-full border border-white/5">{tag}</span>
                 ))}
               </div>
             </div>
@@ -589,82 +805,11 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* ── ESPACE PATRON ── */}
-        {user.is_admin && (
-          <div className="bg-gradient-to-br from-emerald-900/30 to-teal-900/30 border border-emerald-500/30 rounded-3xl p-6 md:p-8 relative overflow-hidden shadow-lg shadow-emerald-900/20">
-            <div className="absolute -top-10 -right-10 text-emerald-500/10 rotate-12">
-              <TrendingUp size={150} />
-            </div>
-            <div className="relative z-10">
-              <div className="flex flex-wrap items-center justify-between mb-6 gap-4">
-                <h2 className="text-2xl font-black text-emerald-400 flex items-center gap-3">
-                  <BarChart3 size={28} /> Espace Patron : Comptabilité
-                </h2>
-                <div className="flex gap-3">
-                  <button onClick={handleExportCSV}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/40 border border-emerald-500/50 text-emerald-300 rounded-xl text-sm font-bold transition-all">
-                    <Euro size={16} /> Exporter .CSV
-                  </button>
-                  <button onClick={handleClearHistory}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-sm font-bold transition-all">
-                    <AlertTriangle size={16} /> Remise à zéro
-                  </button>
-                </div>
-              </div>
+        {/* ── SOLDE (visible par tous) ── */}
+        <SoldeCard userId={user.id} navigate={navigate} />
 
-              {adminStats && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
-                    <div className="text-white/40 text-xs font-bold uppercase tracking-wider mb-2">Chiffre d'Affaires</div>
-                    <div className="text-3xl font-black text-white">{Number(adminStats.total_revenue).toFixed(2)} <span className="text-lg text-emerald-400">€</span></div>
-                  </div>
-                  <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
-                    <div className="text-white/40 text-xs font-bold uppercase tracking-wider mb-2">Coût Ingrédients</div>
-                    <div className="text-3xl font-black text-white">{Number(adminStats.total_cost).toFixed(2)} <span className="text-lg text-red-400">€</span></div>
-                  </div>
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-2xl">
-                    <div className="text-emerald-500/60 text-xs font-bold uppercase tracking-wider mb-2">Bénéfice Net</div>
-                    <div className="text-3xl font-black text-emerald-400">{Number(adminStats.total_margin).toFixed(2)} <span className="text-lg">€</span></div>
-                  </div>
-                  <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
-                    <div className="text-white/40 text-xs font-bold uppercase tracking-wider mb-2">Verres Servis</div>
-                    <div className="text-3xl font-black text-white">{adminStats.total_orders} <span className="text-lg text-blue-400">🍹</span></div>
-                  </div>
-                </div>
-              )}
-
-              {/* ── SLIDER MARGE ── */}
-              <div className="bg-black/30 border border-white/5 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Percent size={16} className="text-emerald-400" />
-                    <span className="text-sm font-bold text-white">Marge sur les cocktails</span>
-                  </div>
-                  <span className={`text-xs font-bold px-2 py-1 rounded-full transition-all ${marginSaved ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/40'}`}>
-                    {marginSaved ? '✅ Sauvegardé' : `Actuelle : ${margin}%`}
-                  </span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <input type="range" min="0" max="200" step="5" value={marginInput}
-                    onChange={e => setMarginInput(Number(e.target.value))}
-                    className="flex-1 h-2 rounded-full appearance-none cursor-pointer accent-emerald-500" />
-                  <span className="text-white font-black text-xl w-16 text-right tabular-nums">{marginInput}%</span>
-                </div>
-                <div className="flex items-center justify-between mt-3">
-                  <p className="text-white/25 text-xs">
-                    Prix client = coût × (1 + {marginInput}/100) — ex: 1€ coût → {(1*(1+marginInput/100)).toFixed(2)}€
-                  </p>
-                  <button onClick={handleSaveMargin}
-                    disabled={marginSaving || marginInput === margin}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl transition-all">
-                    <Save size={13} />
-                    {marginSaving ? 'Sauvegarde…' : 'Appliquer'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ── ESPACE PATRON (admin only) ── */}
+        {user.is_admin && <EspacePatron />}
 
         <AlcoolemieSection userId={user.id} />
         <DepensesSection   userId={user.id} />

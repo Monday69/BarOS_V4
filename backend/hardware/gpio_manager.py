@@ -23,21 +23,29 @@ class GPIOManager:
     @classmethod
     @classmethod
     def _load_config(cls):
-        """Charge la configuration depuis config.json avec détection de chemin robuste"""
+        """Charge la configuration depuis backend/config.json"""
         try:
-            # ✅ On part du dossier où se trouve ce fichier (gpio_manager.py)
+            # On part du dossier de ce fichier (backend/hardware/)
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            # ✅ On remonte jusqu'à la racine du backend (ajuste selon ton arborescence réelle)
-            # Si gpio_manager est dans backend/hardware/, on remonte de 2 niveaux
-            config_path = os.path.join(current_dir, "..", "..", "config.json")
-            config_path = os.path.normpath(config_path) # Nettoie les ".."
+            
+            # On remonte d'UN SEUL niveau pour arriver dans 'backend/'
+            # Puis on cherche config.json
+            config_path = os.path.join(current_dir, "..", "config.json")
+            config_path = os.path.normpath(config_path)
             
             logger.info(f"🔍 Tentative de lecture config : {config_path}")
             
+            if not os.path.exists(config_path):
+                raise FileNotFoundError(f"Fichier introuvable à : {config_path}")
+
             with open(config_path, 'r') as f:
                 data = json.load(f)
-                # Conversion des clés "1" (str) en 1 (int) car le JSON transforme tout en texte
-                cls.PUMP_MAPPING = {int(k): v for k, v in data.get("pump_mapping", {}).items()}
+                # On récupère "pump_mapping" (doit être un dictionnaire dans le JSON)
+                mapping = data.get("pump_mapping", {})
+                if not mapping:
+                    logger.warning("⚠️ 'pump_mapping' est vide dans config.json")
+                
+                cls.PUMP_MAPPING = {int(k): v for k, v in mapping.items()}
                 logger.info(f"📂 Configuration chargée avec succès : {len(cls.PUMP_MAPPING)} pompes")
                 
         except Exception as e:
