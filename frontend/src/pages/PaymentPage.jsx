@@ -24,11 +24,10 @@ import {
   ArrowLeft, Smartphone, Euro, RefreshCw, Zap
 } from 'lucide-react';
 import axios from 'axios';
-
-const API = 'http://localhost:8000/api';
+import { API_BASE_URL } from '../apiConfig';
 
 // ── États de la machine ───────────────────────────────────────────────────────
-// idle → selecting → generating → waiting_payment → confirmed
+const API = API_BASE_URL;
 const STATE = {
   SELECTING:        'selecting',
   GENERATING:       'generating',
@@ -59,7 +58,7 @@ export default function PaymentPage() {
 
   // ── Charger config paiement + solde initial ───────────────────────────────
   useEffect(() => {
-    axios.get(`${API}/payments/config`).then(r => {
+    axios.get(`${API_BASE_URL}/payments/config`).then(r => {
       setConfig(r.data);
       if (r.data.recharge_amounts?.length) {
         // Pré-sélectionner le montant minimal couvrant le besoin
@@ -71,9 +70,9 @@ export default function PaymentPage() {
     }).catch(() => setError("Impossible de charger la configuration."));
 
     if (userId) {
-      axios.get(`${API}/payments/balance/${userId}`)
+      axios.get(`${API_BASE_URL}/payments/balance/${userId}`)
         .then(r => setBalanceBefore(r.data.balance))
-        .catch(() => {});
+        .catch(() => setBalanceBefore(0));
     }
   }, []);
 
@@ -84,23 +83,28 @@ export default function PaymentPage() {
       return;
     }
 
+    // Re-fetch du solde juste avant de poller — plus fiable que balanceBefore
+    // (qui peut être null si réseau lent). Variable locale = pas de pb de closure.
+    let ref = balanceBefore ?? 0;
+    axios.get(`${API_BASE_URL}/payments/balance/${userId}`)
+      .then(r => { ref = r.data.balance; })
+      .catch(() => { /* on garde ref = balanceBefore ?? 0 */ });
+
     pollRef.current = setInterval(async () => {
       try {
-        const r = await axios.get(`${API}/payments/balance/${userId}`);
+        const r = await axios.get(`${API_BASE_URL}/payments/balance/${userId}`);
         const newBalance = r.data.balance;
         setPollCount(c => c + 1);
-
-        // Le webhook a crédité le solde → paiement confirmé
-        if (newBalance > balanceBefore) {
+        if (newBalance > ref) {
           clearInterval(pollRef.current);
           setBalanceAfter(newBalance);
           setPhase(STATE.CONFIRMED);
         }
-      } catch {/* réseau instable, on réessaie au prochain tick */}
+      } catch { /* réseau instable */ }
     }, 2000);
 
     return () => clearInterval(pollRef.current);
-  }, [phase, balanceBefore, userId]);
+  }, [phase]); // ← uniquement [phase], pas ref ni userId
 
   // ── Générer la session Stripe + URL ──────────────────────────────────────
   const handleGenerateQR = async () => {
@@ -108,9 +112,12 @@ export default function PaymentPage() {
     setPhase(STATE.GENERATING);
     setError(null);
     try {
-      const r = await axios.post(`${API}/payments/create-checkout`, {
-        user_id: userId,
-        amount:  selected,
+      const origin = window.location.origin; 
+      const r = await axios.post(`${API_BASE_URL}/payments/create-checkout`, {
+        user_id:     userId,
+        amount:      selected,
+        success_url: `${origin}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url:  `${origin}/payment/cancel`,
       });
       setCheckoutUrl(r.data.checkout_url);
       setPhase(STATE.WAITING_PAYMENT);
@@ -260,8 +267,8 @@ export default function PaymentPage() {
               </p>
             </div>
 
-            {/* QR Code — grand, bien lisible */}
-            <div className="flex flex-col items-center gap-4">
+            {/* QR Code & Lien Direct — bien lisibles */}
+            <div className="flex flex-col items-center gap-4 w-full">
               <div className="bg-white p-5 rounded-3xl shadow-[0_0_60px_rgba(139,92,246,0.4)]
                               border-4 border-violet-500/30">
                 <QRCodeSVG
@@ -274,8 +281,15 @@ export default function PaymentPage() {
                 />
               </div>
 
+              {/* 🆕 BOUTON PAIEMENT DIRECT SUR MOBILE */}
+              <button onClick={() => { window.location.href = checkoutUrl; }}
+                className="w-full mt-2 py-4 flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 text-white font-black text-sm uppercase tracking-widest rounded-2xl transition-all shadow-[0_0_20px_rgba(139,92,246,0.3)] active:scale-95 border border-violet-400/50"
+              >
+                <Smartphone size={18} /> Payer sur ce téléphone
+              </button>
+
               {/* Animation polling */}
-              <div className="flex items-center gap-2 text-violet-400 text-sm font-semibold">
+              <div className="flex items-center gap-2 text-violet-400 text-sm font-semibold mt-2">
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-violet-500" />

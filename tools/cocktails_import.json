@@ -1,0 +1,780 @@
+[
+  {
+    "name": "Jungle Bird",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2024/07/cocktail-jungle-bird.jpg",
+    "description": "Découvrez la recette du cocktail Jungle Bird, à base de rhum ambré, ses ingrédients et étapes de préparation, ainsi que des conseils et anecdotes.",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "4.5 cl Rhum ambré",
+        "volume_ml": 45.0
+      },
+      {
+        "raw_text": "1.5 cl Amer italien",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "4.5 cl Jus d'ananas",
+        "volume_ml": 45.0
+      },
+      {
+        "raw_text": "1.5 cl Jus de citron vert",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "1.25 cl Sirop de canne",
+        "volume_ml": 12.5
+      }
+    ]
+  },
+  
+  {
+    "name": "Jamaïcan Mule",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2024/06/Jamaican-Mule.png",
+    "description": "Le Jamaïcan Mule est un cocktail exotique inspiré par le célèbre Moscow Mule. Il se distingue par son utilisation de rhum, conférant à ce cocktail un équilibre parfait entre douceur et épices.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "5 cl Rhum ambré",
+        "volume_ml": 50.0
+      },
+      {
+        "raw_text": "12 cl Ginger Beer",
+        "volume_ml": 120.0
+      },
+      {
+        "raw_text": "2 cl Jus de citron vert",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "Citron vert",
+        "volume_ml": 0
+      }
+    ]
+  },
+  
+  {
+    "name": "Virgin Mojito",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-virgin-mojito-1.jpg",
+    "description": "Découvrez comment faire la recette du Mojito sans alcool maison. Ingrédients, conseils et variantes aux fruits de ce cocktail pour tous les goûts.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "2 cl Caraïbos Mojito",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "10 cl Limonade",
+        "volume_ml": 100.0
+      },
+      {
+        "raw_text": "2 cl de Sucre de canne",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "2 cl Jus de citron vert",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "8 feuilles Menthe",
+        "volume_ml": 0
+      }
+    ]
+  },
+  {
+    "name": "Rio",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2025/01/cocktail-rio.jpg",
+    "description": "Découvrez la recette simple et rapide du cocktail sans alcool Rio, ses ingrédients et étapes de réalisations.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "15 cl Jus d'orange",
+        "volume_ml": 150.0
+      },
+      {
+        "raw_text": "8 cl Limonade",
+        "volume_ml": 80.0
+      },
+      {
+        "raw_text": "2 cl Sirop de grenadine",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "1 cl Jus de citron vert",
+        "volume_ml": 10.0
+      }
+    ]
+  },
+  
+  
+  
+  {
+    "name": "Zombie",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-zombie-3.jpg",    
+    "description": "Découvrez la recette d'un des plus célèbres cocktails de la culture du bar Tiki, ainsi que des conseils et anecdotes : le cocktail Zombie. ",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "3 cl Rhum blanc",
+        "volume_ml": 30.0
+      },
+      {
+        "raw_text": "3 cl Rhum ambré",
+        "volume_ml": 30.0
+      },
+      {
+        "raw_text": "1.5 cl Liqueur d'abricot",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "6 cl Jus d'ananas",
+        "volume_ml": 60.0
+      },
+      {
+        "raw_text": "2 cl Jus de citron vert",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "2 cl Sirop de grenadine",
+        "volume_ml": 2.0
+      },
+      {
+        "raw_text": "1.5 cl Sirop de canne",
+        "volume_ml": 15.0
+      }
+    ]
+  },
+  {
+    "name": "Cuba Libre",
+    "image_url":"https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-cuba-libre-1.jpg",
+    "description": "Retrouvez la recette simple et rapide du cocktail Cuba Libre, rhum coca, ses ingrédients et étapes de préparation, ainsi que des conseils et anecdotes.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "4 cl Rhum ambré",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "2 cl Jus de citron vert",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "12 cl Coca-Cola",
+        "volume_ml": 120.0
+      }
+    ]
+  },
+  {
+    "name": "Tropical King",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-tropical-king.jpg",
+    "description": "Retrouvez la recette simple et rapide du cocktail Cuba Libre, rhum coca, ses ingrédients et étapes de préparation, ainsi que des conseils et anecdotes.",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "4 cl Rhum ambré",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "4 cl Nectar de goyave",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "4 cl Jus d'ananas",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "1 cl Sirop d'orgeat",
+        "volume_ml": 10.0
+      }
+    ]
+  },
+  {
+    "name": "Santo Libre",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-santo-libre-min.jpg",
+    "description": "Le Santo Libre est un cocktail pétillant et sucré qui marie à merveille les saveurs du rhum ambré et du citron jaune.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "6 cl Rhum ambré",
+        "volume_ml": 60.0
+      },
+      {
+        "raw_text": "1 cl Jus de citron vert",
+        "volume_ml": 10.0
+      },
+      {
+        "raw_text": "15 cl Limonade",
+        "volume_ml": 150.0
+      }
+    ]
+  },
+  {
+    "name": "Planteur Mango",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-planteur-mango-1.jpg",
+    "description": "Le Planteur Mango est un cocktail exotique mêlant rhum ambré, jus d'orange, nectar de mangue et sirop de grenadine. Doux et généreusement fruité, il est idéal pour les soirées d'été ou les apéritifs ensoleillés entre amis.\n",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "4 cl Rhum ambré",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "4 cl Jus d'orange",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "4 cl Nectar de mangue",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "1 cl Sirop de grenadine",
+        "volume_ml": 1.0
+      }
+    ]
+  },
+  {
+    "name": "French Summer Smash",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-french-summer-splash-1.jpg",
+    "description": "Le French Summer Smash est un cocktail pétillant à base de rhum mélangeant l'acidité du citron avec le cidre, la douceur du miel et la cannelle.\n",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "8 cl de Rhum ambré",
+        "volume_ml": 80.0
+      },
+      {
+        "raw_text": "5 cl Cidre brut",
+        "volume_ml": 50.0
+      },
+      {
+        "raw_text": "1,5 cl Jus de citron vert",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "1 cuillère à café Miel",
+        "volume_ml": 0
+      },
+      {
+        "raw_text": "1 bâton de Cannelle",
+        "volume_ml": 0
+      }
+    ]
+  },
+  {
+    "name": "Mojito",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/Cocktail-mojito-1.jpg",
+    "description": "Découvrez le Mojito, ce cocktail cubain mythique au rhum : recette classique, quantités pour 20 personnes, variantes et astuces pour un Mojito parfait.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "4 cl Rhum blanc",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "0.75 cl de Jus de citron vert",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "8 feuilles Menthe",
+        "volume_ml": 0
+      },
+      {
+        "raw_text": "2 cl Sirop de canne",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "Eau gazeuse",
+        "volume_ml": 150.0
+      }
+    ]
+  },
+  {
+    "name": "Mojito Real",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-mojito-real-1.jpg",
+    "description": "Découvrez ce Mojito Royal au Prosecco, qui combine la fraîcheur du Mojito au pétillant du Prosecco !",
+    "ingredients": [
+      {
+        "raw_text": "4 cl Rhum ambré",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "0.5 cl de Jus de citron vert",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "6 feuilles Menthe",
+        "volume_ml": 0
+      },
+      {
+        "raw_text": "2 cl Sirop de canne",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "5 cl Prosecco",
+        "volume_ml": 50.0
+      }
+    ]
+  },
+  {
+    "name": "Mojito Fraise Ambré",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-mojito-fraise-ambre-1.jpg",
+    "description": "Laissez-vous tenter par le goût envoûtant du Mojito Fraise Ambré, une variation séduisante du classique cubain.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "4 cl Rhum ambré",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "8 cl Nectar de fraise",
+        "volume_ml": 80.0
+      },
+      {
+        "raw_text": "20 cl de Jus de citron vert",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "6 feuilles Menthe",
+        "volume_ml": 0
+      },
+      {
+        "raw_text": "1 cl Sirop de canne",
+        "volume_ml": 10.0
+      }
+    ]
+  },
+  {
+    "name": "Daïquiri",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-daiquiri-1.jpg",
+    "description": "Découvrez la recette simple et rapide du cocktail Daïquiri, retrouvez ses ingrédients et étapes de réalisation, et des conseils et anecdotes.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "6 cl Rhum blanc",
+        "volume_ml": 60.0
+      },
+      {
+        "raw_text": "4 cl Jus de citron vert",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "2 cl Sirop de canne",
+        "volume_ml": 20.0
+      }
+    ]
+  },
+  {
+    "name": "Hurricane",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-hurricane.jpg",
+    "description": "Le Hurricane est un cocktail rafraîchissant et coloré, mélangeant rhum, jus d'ananas, fruit de la passion, sirop de grenadine.",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "3 cl Rhum blanc",
+        "volume_ml": 30.0
+      },
+      {
+        "raw_text": "3 cl Rhum ambré",
+        "volume_ml": 30.0
+      },
+      {
+        "raw_text": "4 cl Jus d'ananas",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "4 cl Nectar de maracujà",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "2 cl Sirop de grenadine",
+        "volume_ml": 2.0
+      }
+    ]
+  },
+  {
+    "name": "Dark Mojito",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-dark-mojito-1-2.jpg",
+    "description": "Découvrez la recette simple et rapide du cocktail Dark Mojito, retrouvez ses ingrédients et étapes de réalisation, et des conseils et anecdotes.",
+    "ingredients": [
+      {
+        "raw_text": "4 cl Rhum ambré",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "2 cl Sirop de canne",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "1.5 cl de Jus de citron vert",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "7 feuilles Menthe",
+        "volume_ml": 0
+      },
+      {
+        "raw_text": "Eau gazeuse",
+        "volume_ml": 100.0
+      }
+    ]
+  },
+ 
+  {
+    "name": "Piña Colada",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-pina-colada-6.jpg",
+    "description": "A votre shaker pour réaliser simplement et rapidement la délicieuse recette du cocktail Piña Colada ! A déguster aussi bien en été qu'à Noël.",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "4 cl Rhum blanc",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "6 cl Jus d'ananas",
+        "volume_ml": 60.0
+      },
+      {
+        "raw_text": "6 cl Crème de coco",
+        "volume_ml": 60.0
+      },
+      {
+        "raw_text": "2 cl Sirop de canne",
+        "volume_ml": 20.0
+      }
+    ]
+  },
+  
+  {
+    "name": "Rum Swizzle",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2025/07/cocktail-rum-swizzle-3.jpg",
+    "description": "Découvrez la recette simple et rapide du cocktail Rum Swizzle (à base de rhum), ses ingrédients et étapes de réalisation.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "6 cl de Rhum ambré",
+        "volume_ml": 60.0
+      },
+      {
+        "raw_text": "2 cl de Sirop de Falernum",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "1.5 cl de Jus de citron vert",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "0.75 cl de Jus de citron jaune",
+        "volume_ml": 7.5
+      },
+      {
+        "raw_text": "1.5 cl de Sirop de canne ",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "2 cl de Bitter Angostura",
+        "volume_ml": 2.0
+      }
+    ]
+  },
+  {
+    "name": "Old Swizzle",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-old-swizzle-1.jpg",
+    "description": "Découvrez la recette du Old Swizzle, un cocktail pétillant qui allie rhum ambré, jus de citron, Venezzio et eau gazeuse.",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "6 cl de Rhum ambré",
+        "volume_ml": 60.0
+      },
+      {
+        "raw_text": "2.5 cl de Jus de citron vert",
+        "volume_ml": 25.0
+      },
+      {
+        "raw_text": "0.75 cl de Jus de citron jaune",
+        "volume_ml": 7.5
+      },
+      {
+        "raw_text": "Eau gazeuse",
+        "volume_ml": 100.0
+      },
+      {
+        "raw_text": "4 cl Bitter sans alcool Venezzio",
+        "volume_ml": 4.0
+      }
+    ]
+  },
+  {
+    "name": "Dark N Stormy",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2021/09/cocktail-dark-n-stormy.jpg",
+    "description": "Découvrez la recette simple et rapide du cocktail Dark 'N' Stormy, retrouvez ses ingrédients et étapes de réalisation, et des conseils et anecdotes.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "5 cl Rhum ambré",
+        "volume_ml": 50.0
+      },
+      {
+        "raw_text": "10 cl Ginger Beer",
+        "volume_ml": 100.0
+      },
+      {
+        "raw_text": "2 cl Jus de citron vert",
+        "volume_ml": 20.0
+      }
+    ]
+  },
+  {
+    "name": "Mai Tai",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2021/07/cocktail-mai-tai-2.jpg",
+    "description": "Découvrez la recette de ce cocktail emblématique de la culture Tiki, ainsi que des conseils et anecdotes, qui possède un réel succès : Le Mai Tai.",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "3 cl de Rhum blanc",
+        "volume_ml": 30.0
+      },
+      {
+        "raw_text": "3 cl de Rhum ambré",
+        "volume_ml": 30.0
+      },
+      {
+        "raw_text": "1.5 cl de Curaçao orange",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "3 cl de Jus de citron vert",
+        "volume_ml": 30.0
+      },
+      {
+        "raw_text": "1.5 cl de Sirop d'orgeat",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "0.75 cl de Sirop de canne",
+        "volume_ml": 7.5
+      }
+    ]
+  },
+  {
+    "name": "Red Velvet",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/cocktail-red-velvet.png",
+    "description": "Découvrez ce cocktail fruité à base de rhum ambré. Le Red Velvet est le compagnon idéal pour célébrer les moments spéciaux de la vie, que ce soit lors d'une fête entre amis animée ou lors d'un dîner romantique pour la Saint-Valentin.",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "3 cl de Rhum blanc",
+        "volume_ml": 30.0
+      },
+      {
+        "raw_text": "4 cl de Jus de framboise",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "2 cl de Jus de Citron vert",
+        "volume_ml": 20.0
+      }
+    ]
+  },
+  {
+    "name": "Perfect Colada",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2018/04/recette-cocktail-perfect-colada.jpg",
+    "description": "Revisitez la célèbre Piña Colada avec cette recette de Perfect Colada, un cocktail au blender proposé par Destination Cocktails.",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "4 cl Rhum ambré",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "12 cl Jus d'ananas",
+        "volume_ml": 120.0
+      },
+      {
+        "raw_text": "4 cl Crème de coco",
+        "volume_ml": 40.0
+      }
+    ]
+  },
+  {
+    "name": "Caribbean Mule",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2022/07/cocktail-caribbean-mule-1-1.jpg",
+    "description": "Découvrez la recette du Caribbean Mule, un cocktail au rhum similaire au Dark and Stormy et une variante du célèbre Moscow Mule.",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "5 cl de  Rhum ambré",
+        "volume_ml": 50.0
+      },
+      {
+        "raw_text": "10 cl de  Ginger Beer",
+        "volume_ml": 100.0
+      },
+      {
+        "raw_text": "2 cl Jus de citron vert",
+        "volume_ml": 20.0
+      }
+    ]
+  },
+
+  {
+    "name": "Jamaïcan Mule",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2024/06/Jamaican-Mule.png",
+    "description": "Découvrez la recette du Jamaïcan Mule, un cocktail au rhum similaire au Dark and Stormy et une variante du célèbre Moscow Mule.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "5 cl de  Rhum ambré",
+        "volume_ml": 50.0
+      },
+      {
+        "raw_text": "12 cl de  Ginger Beer",
+        "volume_ml": 120.0
+      },
+      {
+        "raw_text": "2 cl Jus de citron vert",
+        "volume_ml": 20.0
+      },
+      {
+        "raw_text": "1/2  Citron vert",
+        "volume_ml": 0
+      }
+    ]
+  },
+  
+  {
+    "name": "Punch",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-punch-3.jpg",
+    "description": "Préparez un Punch parfait avec Destination Cocktails. Suivez notre recette détaillée et nos conseils de préparation. Pour 10, 20, 30 personnes.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "4 cl Rhum blanc",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "1 cl Rhum ambré",
+        "volume_ml": 10.0
+      },
+      {
+        "raw_text": "2.5 cl Caraïbos Planteur des îles",
+        "volume_ml": 25.0
+      },
+      {
+        "raw_text": "2.5 cl Nectar de mangue",
+        "volume_ml": 25.0
+      },
+      {
+        "raw_text": "2.5 cl Nectar de goyave",
+        "volume_ml": 25.0
+      },
+      {
+        "raw_text": "1 cl Sirop de canne",
+        "volume_ml": 10.0
+      },
+      {
+        "raw_text": "2.25 cl de Jus de citron vert",
+        "volume_ml": 22.5
+      }
+    ]
+  },
+  {
+    "name": "Queens Park Swizzle",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2025/07/cocktail-queens-park-swizzle-4.jpg",
+    "description": "Découvrez la recette simple et rapide du cocktail Queens Park Swizzle (à base de rhum), ses ingrédients et étapes de réalisation.",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "6 cl de Rhum ambré",
+        "volume_ml": 60.0
+      },
+      {
+        "raw_text": "2.25 cl de Jus de citron vert",
+        "volume_ml": 22.5
+      },
+      {
+        "raw_text": "1.5 cl de Sirop de canne",
+        "volume_ml": 15.0
+      },
+      {
+        "raw_text": "4 traits de Bitter Angostura",
+        "volume_ml": 6.0
+      },
+      {
+        "raw_text": "8 feuilles de Menthe",
+        "volume_ml": 0
+      }
+    ]
+  },
+  
+  
+  {
+    "name": "Virgin Spritz",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2019/11/cocktail-virgin-spritz-3.jpg",
+    "description": "Envie d'un délicieux cocktail sans alcool aux saveurs d'Italie ? Découvrez la recette du Virgin Spritz ! A déguster seul ou entre amis !",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "5 cl Bitter sans alcool Venezzio",
+        "volume_ml": 50.0
+      },
+      {
+        "raw_text": "5 cl Pétillant sans alcool",
+        "volume_ml": 50.0
+      },
+      {
+        "raw_text": "4 cl Jus d'orange",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "5 cl Limonade",
+        "volume_ml": 50.0
+      }
+    ]
+  },
+  
+  {
+    "name": "Painkiller",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2024/10/cocktail-painkiller.jpg",
+    "description": "Découvrez la recette du cocktail Painkiller, variante de la Piña Colada, et apprenez à le préparer parfaitement avec Destination cocktails.",
+    "instruction": "shaker",
+    "ingredients": [
+      {
+        "raw_text": "6 cl Rhum ambré",
+        "volume_ml": 60.0
+      },
+      {
+        "raw_text": "12 cl Jus d'ananas",
+        "volume_ml": 120.0
+      },
+      {
+        "raw_text": "3 cl Crème de coco",
+        "volume_ml": 30.0
+      },
+      {
+        "raw_text": "3 cl Jus d'orange",
+        "volume_ml": 30.0
+      }
+    ]
+  },
+  {
+    "name": "Moscow Mule",
+    "image_url": "https://www.destinationcocktails.fr/wp-content/uploads/2024/06/cocktail-moscow-mule.jpg",
+    "description": "Retrouvez les ingrédients et les étapes de la réalisation de ce cocktail Moscow Mule, proposée par Destinationcocktails.fr",
+    "instruction": "stir",
+    "ingredients": [
+      {
+        "raw_text": "4 cl de Vodka",
+        "volume_ml": 40.0
+      },
+      {
+        "raw_text": "12 cl de Ginger Beer",
+        "volume_ml": 120.0
+      },
+      {
+        "raw_text": "1 cl de Jus de citron vert",
+        "volume_ml": 10.0
+      }
+    ]
+  }
+]

@@ -14,12 +14,16 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from pydantic import BaseModel
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi.responses import StreamingResponse
 
 from backend.database import get_db
-from backend.models import Ingredient, PourSequence, OrderHistory, PourStep
+from backend.models import Ingredient, PourSequence, OrderHistory, PourStep, User, Recipe
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
 
 router = APIRouter()
 
@@ -150,3 +154,177 @@ def export_orders_csv(db: Session = Depends(get_db)):
     filename = f"BarOS_Export_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
     return StreamingResponse(output, media_type="text/csv",
                              headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+
+# =============================================================================
+# ENDPOINTS DASHBOARD PATRON — v2
+# =============================================================================
+
+@router.get("/revenue-by-day")
+def revenue_by_day(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_admin),
+):
+    """Revenus agrégés par jour sur les N derniers jours."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = (
+        db.query(
+            func.date(OrderHistory.timestamp).label("date"),
+            func.count(OrderHistory.id).label("orders"),
+            func.coalesce(func.sum(OrderHistory.sale_price), 0).label("revenue"),
+            func.coalesce(func.sum(OrderHistory.cost_price),  0).label("cost"),
+        )
+        .filter(
+            OrderHistory.timestamp >= since,
+            OrderHistory.recipe_id.isnot(None),
+        )
+        .group_by(func.date(OrderHistory.timestamp))
+        .order_by(func.date(OrderHistory.timestamp))
+        .all()
+    )
+    return [
+        {
+            "date":    str(r.date),
+            "orders":  r.orders,
+            "revenue": round(float(r.revenue), 2),
+            "cost":    round(float(r.cost), 2),
+            "margin":  round(float(r.revenue) - float(r.cost), 2),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/top-cocktails")
+def top_cocktails(
+    days:  int = 30,
+    limit: int = 8,
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_admin),
+):
+    """Top cocktails par nombre de commandes + revenu généré."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = (
+        db.query(
+            OrderHistory.recipe_id,
+            func.count(OrderHistory.id).label("count"),
+            func.coalesce(func.sum(OrderHistory.sale_price), 0).label("revenue"),
+            func.avg(OrderHistory.rating).label("avg_rating"),
+        )
+        .filter(
+            OrderHistory.timestamp >= since,
+            OrderHistory.recipe_id.isnot(None),
+        )
+        .group_by(OrderHistory.recipe_id)
+        .order_by(func.count(OrderHistory.id).desc())
+        .limit(limit)
+        .all()
+    )
+    result = []
+    for r in rows:
+        recipe = db.get(Recipe, r.recipe_id)
+        result.append({
+            "recipe_id":  r.recipe_id,
+            "name":       recipe.name if recipe else f"Recette #{r.recipe_id}",
+            "count":      r.count,
+            "revenue":    round(float(r.revenue), 2),
+            "avg_rating": round(float(r.avg_rating), 1) if r.avg_rating else None,
+        })
+    return result
+
+
+@router.get("/top-users")
+def top_users(
+    days:  int = 30,
+    limit: int = 8,
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_admin),
+):
+    """Top clients par dépenses totales sur la période."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = (
+        db.query(
+            OrderHistory.user_id,
+            func.count(OrderHistory.id).label("orders"),
+            func.coalesce(func.sum(OrderHistory.sale_price), 0).label("total_spent"),
+            func.avg(OrderHistory.rating).label("avg_rating"),
+        )
+        .filter(
+            OrderHistory.timestamp >= since,
+            OrderHistory.user_id.isnot(None),
+            OrderHistory.recipe_id.isnot(None),
+        )
+        .group_by(OrderHistory.user_id)
+        .order_by(func.sum(OrderHistory.sale_price).desc())
+        .limit(limit)
+        .all()
+    )
+    result = []
+    for r in rows:
+        user = db.get(User, r.user_id)
+        result.append({
+            "user_id":     r.user_id,
+            "name":        user.name if user else f"User #{r.user_id}",
+            "orders":      r.orders,
+            "total_spent": round(float(r.total_spent), 2),
+            "avg_rating":  round(float(r.avg_rating), 1) if r.avg_rating else None,
+        })
+    return result
+
+@router.get("/export/users", dependencies=[Depends(verify_admin)])
+def export_users_xlsx(db: Session = Depends(get_db)):
+    """Export Excel de tous les utilisateurs avec leurs soldes."""
+    users = db.query(User).order_by(User.name).all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Utilisateurs BarOS"
+
+    # En-têtes
+    headers = ["ID", "Nom", "Carte NFC (UID)", "Solde (€)", "Genre", "Poids (kg)", "Âge", "Admin", "Créé le"]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font      = Font(bold=True, color="FFFFFF")
+        cell.fill      = PatternFill("solid", fgColor="1a1a2e")
+        cell.alignment = Alignment(horizontal="center")
+
+    # Données
+    for row, u in enumerate(users, 2):
+        ws.cell(row=row, column=1, value=u.id)
+        ws.cell(row=row, column=2, value=u.name)
+        ws.cell(row=row, column=3, value=u.card_uid)
+        ws.cell(row=row, column=4, value=round(u.balance or 0.0, 2))
+        ws.cell(row=row, column=5, value=u.gender or "—")
+        ws.cell(row=row, column=6, value=u.weight_kg)
+        ws.cell(row=row, column=7, value=u.age)
+        ws.cell(row=row, column=8, value="Oui" if u.is_admin else "Non")
+        ws.cell(row=row, column=9, value=u.created_at.strftime("%d/%m/%Y %H:%M") if u.created_at else "—")
+
+        # Ligne alternée
+        if row % 2 == 0:
+            for col in range(1, 10):
+                ws.cell(row=row, column=col).fill = PatternFill("solid", fgColor="f5f5f5")
+
+    # Largeurs colonnes
+    for col, width in zip("ABCDEFGHI", [6, 20, 16, 12, 8, 12, 6, 8, 18]):
+        ws.column_dimensions[col].width = width
+
+    # Ligne total solde
+    ws.append([])
+    total_row = len(users) + 3
+    ws.cell(row=total_row, column=3, value="TOTAL SOLDES")
+    ws.cell(row=total_row, column=3).font = Font(bold=True)
+    ws.cell(row=total_row, column=4, value=round(sum(u.balance or 0 for u in users), 2))
+    ws.cell(row=total_row, column=4).font = Font(bold=True, color="10b981")
+
+    # Stream
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"BarOS_Users_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

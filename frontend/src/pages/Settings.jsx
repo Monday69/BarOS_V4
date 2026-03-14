@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../apiConfig';
 import {
   Settings as SettingsIcon, Zap, RefreshCw, AlertTriangle, Edit3,
   X, Check, Trash2, Scan, Search, Filter, BookOpen, ChevronRight,
   AlertOctagon, Flame, Droplets, Wine, CheckCircle, Lock, ShieldCheck, Euro
 } from 'lucide-react';
 
-const API = 'http://localhost:8000/api';
+
+
 
 // ── Écran de déverrouillage admin ─────────────────────────────────────────────
 // Affiché UNE SEULE FOIS à l'entrée de la page Settings.
@@ -23,7 +25,7 @@ function AdminUnlockScreen({ onUnlock }) {
     setLoading(true);
     // Vérification rapide : on tente un GET protégé pour valider la clé
     try {
-      await axios.get(`${API}/ingredients`, {
+      await axios.get(`${API_BASE_URL}/ingredients`, {
         headers: { 'x-admin-token': key.trim() }
       });
       onUnlock(key.trim());
@@ -239,7 +241,7 @@ const SettingsContent = ({ adminKey }) => {
   // ── Fetch données ─────────────────────────────────────────────────────────
   const fetchIngredients = useCallback(async () => {
     try {
-      const res = await axios.get(`${API}/ingredients`);
+      const res = await axios.get(`${API_BASE_URL}/ingredients`);
       setIngredients(res.data.sort((a, b) => {
         if (a.pump_id && !b.pump_id) return -1;
         if (!a.pump_id && b.pump_id) return 1;
@@ -254,7 +256,7 @@ const SettingsContent = ({ adminKey }) => {
 
   const fetchAlerts = useCallback(async () => {
     try {
-      const res = await axios.get(`${API}/machine/alerts`);
+      const res = await axios.get(`${API_BASE_URL}/machine/alerts`);
       setAlerts(res.data);
     } catch (e) {
       console.error("Erreur alertes:", e);
@@ -277,7 +279,7 @@ const SettingsContent = ({ adminKey }) => {
   const handleRefill = async (ing) => {
     setRefillingId(ing.id);
     const ok = await adminPut(
-      `${API}/ingredients/${ing.id}`,
+      `${API_BASE_URL}/ingredients/${ing.id}`,
       { current_volume_ml: ing.max_volume_ml || 1000 }
     );
     if (ok) {
@@ -296,7 +298,7 @@ const SettingsContent = ({ adminKey }) => {
     if (!isNaN(parsedPrice) && parsedPrice > 0) {
       body.purchase_price_per_liter = parsedPrice;
     }
-    const ok = await adminPut(`${API}/ingredients/${editingIngredient.id}`, body);
+    const ok = await adminPut(`${API_BASE_URL}/ingredients/${editingIngredient.id}`, body);
     if (ok) {
       setEditingIngredient(null);
       fetchIngredients();
@@ -308,7 +310,7 @@ const SettingsContent = ({ adminKey }) => {
   const handleUnassign = async () => {
     if (!editingIngredient) return;
     const ok = await adminPut(
-      `${API}/ingredients/${editingIngredient.id}`,
+      `${API_BASE_URL}/ingredients/${editingIngredient.id}`,
       { pump_id: null }
     );
     if (ok) {
@@ -339,7 +341,7 @@ const SettingsContent = ({ adminKey }) => {
   const toggleHistory = async () => {
     if (showHistory) { setShowHistory(false); return; }
     const data = await adminGet(
-      `${API}/ingredients/${scanningIngredient.id}/history`
+      `${API_BASE_URL}/ingredients/${scanningIngredient.id}/history`
     );
     if (data) { setHistoryList(data); setShowHistory(true); }
   };
@@ -350,7 +352,7 @@ const SettingsContent = ({ adminKey }) => {
     setScanLoading(true);
     setScanResult(null);
     const data = await adminPost(
-      `${API}/ingredients/${scanningIngredient.id}/scan`,
+      `${API_BASE_URL}/ingredients/${scanningIngredient.id}/scan`,
       {},
       { barcode: barcodeInput }
     );
@@ -362,7 +364,7 @@ const SettingsContent = ({ adminKey }) => {
   const confirmScan = async () => {
     const parsedPrice = parseFloat(scanPrice);
     if (!isNaN(parsedPrice) && parsedPrice > 0) {
-      await adminPut(`${API}/ingredients/${scanningIngredient.id}`, {
+      await adminPut(`${API_BASE_URL}/ingredients/${scanningIngredient.id}`, {
         purchase_price_per_liter: parsedPrice,
       });
     }

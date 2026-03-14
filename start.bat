@@ -32,7 +32,7 @@ timeout /t 2 /nobreak >nul
 start "BarOS — Frontend" cmd /k "color 0D && echo [FRONTEND] Demarrage Vite... && cd /d %~dp0\frontend && npm run dev"
 
 :: ── 3. Stripe CLI ───────────────────────────────────────────────────────────
-start "BarOS — Stripe" cmd /k "color 0E && echo [STRIPE] Webhook listener... && stripe listen --forward-to localhost:8000/api/payments/webhook"
+start "BarOS — Stripe" cmd /k "color 0E && echo [STRIPE] Webhook listener... && stripe listen --forward-to localhost.1.12:8000/api/payments/webhook"
 
 :: ── Ouvrir le navigateur après 4 secondes ──────────────────────────────────
 timeout /t 4 /nobreak >nul
@@ -40,9 +40,9 @@ start http://localhost:5173
 
 echo.
 echo  ✅  BarOS est lancé !
-echo  • Backend  : http://localhost:8000
+echo  • Backend  : http://localhost.1.12:8000
 echo  • Frontend : http://localhost:5173
-echo  • API Docs : http://localhost:8000/docs
+echo  • API Docs : http://localhost.1.12:8000/docs
 echo.
 echo  Ferme cette fenetre pour tout garder ouvert.
 echo  Pour arreter : ferme les 3 fenetres de terminal.

@@ -1,112 +1,97 @@
 import React, { useRef, useLayoutEffect } from 'react'
 import { useGLTF } from '@react-three/drei'
+import * as THREE from 'three'
 
-// 👇 C'EST ICI QUE TU VAS FAIRE TA LOI !
-// Note le nom exact qui s'affiche dans la console quand tu cliques, 
-// et assigne-lui le numéro que tu veux (0 pour la 1ère, 1 pour la 2ème...).
 const ORDRE_DES_CUVES = {
-  // --- 🟢 LE CERCLE EXTÉRIEUR (Sens des aiguilles d'une montre) ---
-  
-  "cuve10": 0,  // Cuve #1  : Celle tout en haut (Midi)
-  "cuve5": 1,  // Cuve #2  : Juste à droite (1h)
-  "cuve7": 2,  // Cuve #3  : Diagonale droite
-  "cuve6": 3,  // Cuve #4  : ...
-  "cuve11": 4,  // Cuve #5  : ...
-  "cuve4": 5,  // Cuve #6  : En bas (6h)
-  "cuve9": 6,  // Cuve #7  : ...
-  "cuve3": 7,  // Cuve #8  : ...
-  "cuve2": 8,  // Cuve #9  : ...
-  "cuve1": 9,  // Cuve #10 : En haut à gauche (11h)
-
-  // --- 🔵 LES 2 DU MILIEU ---
-
-  "cuve12": 10, // Cuve #11 : Milieu Gauche
-  "cuve8": 11, // Cuve #12 : Milieu Droite
+  "cuve10": 0,
+  "cuve5":  1,
+  "cuve7":  2,
+  "cuve6":  3,
+  "cuve11": 4,
+  "cuve4":  5,
+  "cuve9":  6,
+  "cuve3":  7,
+  "cuve2":  8,
+  "cuve1":  9,
+  "cuve12": 10,
+  "cuve8":  11,
 };
 
-export default function Machine({ onBottleSelect, config, ...props }) {
-  // Charge le modèle V3
-  const gltf = useGLTF('/models/machine.gltf')
+// hoveredSlot : index (0-11) de la cuve à faire briller, ou null
+export default function Machine({ onBottleSelect, config, hoveredSlot = null, ...props }) {
+  const gltf     = useGLTF('/models/machine.gltf')
   const groupRef = useRef()
 
-  // Cherche le parent "cuve..."
   const findCuveParent = (obj) => {
     let current = obj;
     while (current) {
-      if (current.name && current.name.toLowerCase().startsWith('cuve')) {
-        return current;
-      }
+      if (current.name && current.name.toLowerCase().startsWith('cuve')) return current;
       current = current.parent;
       if (current === groupRef.current || !current) break;
     }
     return null;
   };
 
-  // Convertit le Nom en Index (via ta liste, ou par défaut le chiffre du nom)
   const getIndex = (name) => {
-    // 1. D'abord, on regarde si tu as défini un ordre manuel
-    if (ORDRE_DES_CUVES.hasOwnProperty(name)) {
-        return ORDRE_DES_CUVES[name];
-    }
-
-    // 2. Sinon, on prend le chiffre dans le nom (l'ancien système)
-    const numberPart = name.replace(/\D/g, ''); 
-    const number = parseInt(numberPart, 10);
-    return !isNaN(number) ? number - 1 : null;
+    if (Object.prototype.hasOwnProperty.call(ORDRE_DES_CUVES, name)) return ORDRE_DES_CUVES[name];
+    const n = parseInt(name.replace(/\D/g, ''), 10);
+    return !isNaN(n) ? n - 1 : null;
   };
 
-  // LE PEINTRE 🎨
+  // ── Peinture + émissivité ────────────────────────────────────────────────
   useLayoutEffect(() => {
-    const scene = gltf.scene;
-    scene.traverse((obj) => {
-      if (obj.isMesh) {
-         const cuve = findCuveParent(obj);
-         if (cuve) {
-            const index = getIndex(cuve.name);
-            
-            if (index !== null) {
-                const commande = config ? config[index] : null;
+    gltf.scene.traverse((obj) => {
+      if (!obj.isMesh) return;
+      const cuve = findCuveParent(obj);
+      if (!cuve) return;
 
-                if (!obj.userData.originalMaterial) {
-                   obj.userData.originalMaterial = obj.material.clone();
-                }
+      const index = getIndex(cuve.name);
+      if (index === null) return;
 
-                if (commande && commande.color) {
-                   const peinture = obj.userData.originalMaterial.clone();
-                   peinture.color.set(commande.color);
-                   if (obj.userData.originalMaterial.metalness) {
-                       peinture.metalness = obj.userData.originalMaterial.metalness;
-                   }
-                   obj.material = peinture;
-                } else {
-                   obj.material = obj.userData.originalMaterial;
-                }
-            }
-         }
+      // Mémoriser le matériau original une seule fois
+      if (!obj.userData.originalMaterial) {
+        obj.userData.originalMaterial = obj.material.clone();
       }
-    });
-  }, [config, gltf.scene]); 
 
-  // LE CLICKER 🎯
+      const commande   = config?.[index];
+      const isHovered  = hoveredSlot === index;
+      const isSelected = commande && commande.color;
+
+      // Construit le matériau final
+      const mat = obj.userData.originalMaterial.clone();
+
+      if (isSelected) {
+        mat.color.set(commande.color);
+        if (obj.userData.originalMaterial.metalness != null) {
+          mat.metalness = obj.userData.originalMaterial.metalness;
+        }
+      }
+
+      // Émissivité orange si survolé
+      if (isHovered) {
+        mat.emissive    = new THREE.Color('#ff6600');
+        mat.emissiveIntensity = 0.55;
+      } else {
+        mat.emissive          = new THREE.Color('#000000');
+        mat.emissiveIntensity = 0;
+      }
+
+      obj.material = mat;
+    });
+  }, [config, hoveredSlot, gltf.scene]);
+
+  // ── Click ────────────────────────────────────────────────────────────────
   const handleClick = (e) => {
     e.stopPropagation();
     const cuve = findCuveParent(e.object);
-
-    if (cuve) {
-        const index = getIndex(cuve.name);
-        
-        // C'est ici que tu vas choper les noms pour ton mapping !
-        //console.log(`🔍 OBJET: "${cuve.name}" -> INDEX ACTUEL: ${index}`);
-        
-        if (index !== null && onBottleSelect) {
-            onBottleSelect(index);
-        }
-    }
+    if (!cuve) return;
+    const index = getIndex(cuve.name);
+    if (index !== null && onBottleSelect) onBottleSelect(index);
   };
 
   return (
     <group ref={groupRef} {...props} dispose={null} onClick={handleClick}>
-        <primitive object={gltf.scene} rotation={[-Math.PI / 2, 0, 0]} />
+      <primitive object={gltf.scene} rotation={[-Math.PI / 2, 0, 0]} />
     </group>
-  )
+  );
 }

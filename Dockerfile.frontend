@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  BarOS V4 — Frontend Dockerfile
+#  Multi-stage :
+#    stage 1 (builder) : npm install + vite build → /app/dist
+#    stage 2 (export)  : copie dist dans le volume partagé avec nginx
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Stage 1 : Build ──────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# ARG transmis depuis docker-compose (VITE_ préfixe requis par Vite)
+ARG VITE_API_URL=http://localhost/api
+ENV VITE_API_URL=$VITE_API_URL
+
+# Dépendances d'abord (layer cacheable)
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+
+# Code source
+COPY frontend/ .
+
+# Build de production
+RUN npm run build
+
+# ── Stage 2 : Export vers volume Nginx ───────────────────────────────────────
+# On utilise une image légère juste pour "tenir" le volume monté
+FROM alpine:3.18
+
+WORKDIR /usr/share/nginx/html
+
+# Copie le dist depuis le stage builder
+COPY --from=builder /app/dist .
+
+# Container qui ne fait rien — il existe juste pour partager les fichiers
+# via le volume frontend_build défini dans docker-compose.yml
+CMD ["sh", "-c", "echo 'Frontend build ready' && tail -f /dev/null"]

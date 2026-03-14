@@ -1,6 +1,25 @@
-# users.py
+"""
+BarOS V4 - Router Users
+Chemin : backend/routers/users.py
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+CORRECTIFS v2 :
+  [SECURITE] Rate limiting IP sur /verify-pin et /set-pin :
+             Un attaquant qui connait le user_id peut bruteforcer
+             le PIN depuis une IP differente a chaque requete.
+             La protection DB (pin_locked_until) ne suffit pas car
+             elle ne bloque que par user_id.
+             Solution : compteur par IP en memoire (dict + TTL 60s).
+             Max 10 tentatives/IP/minute sur les endpoints PIN.
+             Complement, pas remplacement, du lockout DB existant.
+  [SECURITE] /get_all_users protege par token admin : retournait
+             tous les users (noms, UIDs, soldes) sans aucune auth.
+"""
+import bcrypt
+import os
+import time
+from collections import defaultdict
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, Request
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 from pydantic import BaseModel
@@ -12,7 +31,58 @@ from backend.models import User, UserFavorite, OrderHistory, Recipe, RecipeIngre
 
 router = APIRouter()
 
-# ── Modèles Pydantic ──────────────────────────────────────────────────────────
+PIN_LENGTH      = 6
+MAX_ATTEMPTS    = 5
+LOCKOUT_SECONDS = 60
+
+# =============================================================================
+# RATE LIMITING IP EN MEMOIRE
+# =============================================================================
+# Structure : { ip: {"count": int, "window_start": float} }
+# Fenetres glissantes de 60s, max 10 requetes/IP sur les endpoints PIN.
+# Nettoyage automatique des entrees expirées a chaque appel.
+_pin_rate: dict = defaultdict(lambda: {"count": 0, "window_start": 0.0})
+_RATE_LIMIT_MAX    = 10   # tentatives max par IP par fenetre
+_RATE_LIMIT_WINDOW = 60   # fenetre en secondes
+
+def _check_rate_limit(request: Request):
+    """
+    Leve HTTP 429 si l'IP a depasse la limite sur la fenetre courante.
+    Reinitialise le compteur si la fenetre est expiree.
+    """
+    ip  = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    entry = _pin_rate[ip]
+
+    # Fenetre expiree → reset
+    if now - entry["window_start"] > _RATE_LIMIT_WINDOW:
+        entry["count"]        = 0
+        entry["window_start"] = now
+
+    entry["count"] += 1
+
+    if entry["count"] > _RATE_LIMIT_MAX:
+        retry_after = int(_RATE_LIMIT_WINDOW - (now - entry["window_start"])) + 1
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code":        "RATE_LIMITED",
+                "message":     f"Trop de tentatives depuis cette adresse. Reessayez dans {retry_after}s.",
+                "retry_after": retry_after,
+            },
+            headers={"Retry-After": str(retry_after)},
+        )
+
+def _cleanup_rate_table():
+    """Supprime les entrees expirees pour eviter une fuite memoire sur long run."""
+    now     = time.monotonic()
+    expired = [ip for ip, e in _pin_rate.items()
+               if now - e["window_start"] > _RATE_LIMIT_WINDOW * 2]
+    for ip in expired:
+        del _pin_rate[ip]
+
+
+# ── Modeles Pydantic ──────────────────────────────────────────────────────────
 
 class UserBase(BaseModel):
     card_uid: str
@@ -31,11 +101,8 @@ class UserResponse(UserBase):
     weight_kg:   Optional[float] = None
     age:         Optional[int]   = None
     preferences: Dict
-    # ✅ Fix : is_admin ajouté — sans ce champ, UserContext.jsx reçoit
-    # toujours is_admin=undefined → bool(undefined) = False →
-    # AdminRoute bloque l'accès même avec une carte admin valide.
     is_admin:    bool = False
-
+    has_pin:     bool = False
     class Config:
         from_attributes = True
 
@@ -66,18 +133,22 @@ class RatingSubmit(BaseModel):
     rating:  int
     comment: Optional[str] = None
 
+class PinSet(BaseModel):
+    user_id: int
+    pin:     str
 
-# ── Helper nutrition centralisé ───────────────────────────────────────────────
+class PinVerify(BaseModel):
+    user_id: int
+    pin:     str
+
+class PinReset(BaseModel):
+    user_id: int
+
+
+# ── Helpers nutrition ─────────────────────────────────────────────────────────
 
 def _calc_nutrition(orders: list) -> dict:
-    """
-    Calcule kcal, sucres et alcool pur à partir d'une liste d'OrderHistory.
-    Centralisé ici pour éviter la duplication entre stats et alcoolémie.
-    """
-    total_kcal      = 0.0
-    total_sugar_g   = 0.0
-    total_alc_grams = 0.0
-
+    total_kcal = total_sugar_g = total_alc_grams = 0.0
     for order in orders:
         if not order.recipe:
             continue
@@ -90,7 +161,6 @@ def _calc_nutrition(orders: list) -> dict:
             total_sugar_g   += (ing.sugar_g_per_100ml or 0.0) * vol / 100.0
             if (ing.alcohol_degree or 0.0) > 0:
                 total_alc_grams += vol * (ing.alcohol_degree / 100.0) * 0.789
-
     return {
         "total_kcal":          round(total_kcal, 1),
         "total_sugar_g":       round(total_sugar_g, 1),
@@ -98,11 +168,7 @@ def _calc_nutrition(orders: list) -> dict:
         "total_alcohol_units": round(total_alc_grams / 10.0, 1),
     }
 
-
-# ── Helper query ──────────────────────────────────────────────────────────────
-
 def _orders_with_nutrition(db: Session, user_id: int, since: datetime) -> list:
-    """OrderHistory avec tous les joinedload nutrition pour un user depuis 'since'."""
     return (
         db.query(OrderHistory)
         .options(
@@ -121,20 +187,30 @@ def _orders_with_nutrition(db: Session, user_id: int, since: datetime) -> list:
 
 # ── Auth & Profil ─────────────────────────────────────────────────────────────
 
-@router.post("/scan", response_model=UserResponse)
+@router.post("/scan")
 def scan_card(card_data: UserBase, db: Session = Depends(get_db)):
-    # ✅ Fix : db.get() — db.query().filter().first() sur PK est inutilement verbeux
     user = db.query(User).filter(User.card_uid == card_data.card_uid).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur inconnu")
-    # is_admin est sérialisé automatiquement via UserResponse (from_attributes=True)
-    return user
+    return {
+        "id":           user.id,
+        "name":         user.name,
+        "card_uid":     user.card_uid,
+        "gender":       user.gender,
+        "weight_kg":    user.weight_kg,
+        "age":          user.age,
+        "preferences":  user.preferences or {},
+        "is_admin":     user.is_admin,
+        "balance":      user.balance,
+        "has_pin":      user.pin_hash is not None,
+        "requires_pin": True,
+    }
 
 
 @router.post("/register", response_model=UserResponse)
 def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(User.card_uid == user_data.card_uid).first():
-        raise HTTPException(status_code=400, detail="Cette carte est déjà enregistrée.")
+        raise HTTPException(status_code=400, detail="Cette carte est deja enregistree.")
     new_user = User(
         card_uid    = user_data.card_uid,
         name        = user_data.name,
@@ -142,7 +218,6 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
         weight_kg   = user_data.weight_kg,
         age         = user_data.age,
         preferences = user_data.preferences or {},
-        # is_admin=False par défaut (valeur du modèle SQLAlchemy)
     )
     db.add(new_user)
     db.commit()
@@ -150,63 +225,168 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 
+# ── PIN — Definir / Verifier / Reset ─────────────────────────────────────────
+
+@router.post("/set-pin")
+def set_pin(payload: PinSet, request: Request, db: Session = Depends(get_db)):
+    """
+    Definir ou changer son PIN (6 chiffres).
+    Rate limité par IP : max 10 appels/min.
+    """
+    _check_rate_limit(request)
+    _cleanup_rate_table()
+
+    if not payload.pin.isdigit() or len(payload.pin) != PIN_LENGTH:
+        raise HTTPException(400, f"Le PIN doit etre exactement {PIN_LENGTH} chiffres.")
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(404, "Utilisateur introuvable")
+    user.pin_hash         = bcrypt.hashpw(payload.pin.encode(), bcrypt.gensalt()).decode()
+    user.pin_attempts     = 0
+    user.pin_locked_until = None
+    db.commit()
+    return {"status": "ok", "message": "PIN defini avec succes."}
+
+
+@router.post("/verify-pin")
+def verify_pin(payload: PinVerify, request: Request, db: Session = Depends(get_db)):
+    """
+    Verifie le PIN apres badge NFC.
+    Double protection :
+      1. Rate limit IP (10 req/min) → bloque le bruteforce multi-users depuis une IP
+      2. Lockout DB par user (5 tentatives → 60s) → bloque le bruteforce mono-user
+    """
+    # ── Protection niveau 1 : rate limit IP ──────────────────────────────────
+    _check_rate_limit(request)
+    _cleanup_rate_table()
+
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(404, "Utilisateur introuvable")
+
+    now = datetime.now(timezone.utc)
+
+    # ── Protection niveau 2 : lockout DB ─────────────────────────────────────
+    if user.pin_locked_until:
+        locked_until = user.pin_locked_until
+        if locked_until.tzinfo is None:
+            locked_until = locked_until.replace(tzinfo=timezone.utc)
+        if now < locked_until:
+            remaining = int((locked_until - now).total_seconds())
+            raise HTTPException(423, {
+                "code":      "LOCKED",
+                "message":   f"Compte bloque. Reessayez dans {remaining}s.",
+                "remaining": remaining,
+            })
+
+    if not user.pin_hash:
+        raise HTTPException(400, {"code": "NO_PIN", "message": "Aucun PIN defini."})
+
+    if not bcrypt.checkpw(payload.pin.encode(), user.pin_hash.encode()):
+        user.pin_attempts += 1
+        attempts_left = MAX_ATTEMPTS - user.pin_attempts
+        if user.pin_attempts >= MAX_ATTEMPTS:
+            user.pin_locked_until = now + timedelta(seconds=LOCKOUT_SECONDS)
+            user.pin_attempts     = 0
+            db.commit()
+            raise HTTPException(423, {
+                "code":      "LOCKED",
+                "message":   f"Trop de tentatives. Compte bloque {LOCKOUT_SECONDS}s.",
+                "remaining": LOCKOUT_SECONDS,
+            })
+        db.commit()
+        raise HTTPException(401, {
+            "code":          "WRONG_PIN",
+            "message":       "PIN incorrect.",
+            "attempts_left": attempts_left,
+        })
+
+    # PIN correct
+    user.pin_attempts     = 0
+    user.pin_locked_until = None
+    db.commit()
+    return {
+        "id":          user.id,
+        "name":        user.name,
+        "card_uid":    user.card_uid,
+        "gender":      user.gender,
+        "weight_kg":   user.weight_kg,
+        "age":         user.age,
+        "preferences": user.preferences or {},
+        "is_admin":    user.is_admin,
+        "balance":     user.balance,
+        "has_pin":     True,
+    }
+
+
+@router.post("/reset-pin")
+def reset_pin(
+    payload:       PinReset,
+    db:            Session = Depends(get_db),
+    x_admin_token: Optional[str] = Header(default=None),
+):
+    """Reset du PIN par l'admin."""
+    secret = os.getenv("BAROS_ADMIN_SECRET")
+    if not secret or x_admin_token != secret:
+        raise HTTPException(403, "Acces refuse")
+    user = db.get(User, payload.user_id)
+    if not user:
+        raise HTTPException(404, "Utilisateur introuvable")
+    user.pin_hash         = None
+    user.pin_attempts     = 0
+    user.pin_locked_until = None
+    db.commit()
+    return {"status": "ok", "message": f"PIN de {user.name} reinitialise."}
+
+
 # ── Favoris ───────────────────────────────────────────────────────────────────
 
 @router.post("/{user_id}/favorites/{recipe_id}")
 def add_favorite(user_id: int, recipe_id: int, db: Session = Depends(get_db)):
     exists = db.query(UserFavorite).filter(
-        UserFavorite.user_id   == user_id,
-        UserFavorite.recipe_id == recipe_id,
+        UserFavorite.user_id == user_id, UserFavorite.recipe_id == recipe_id,
     ).first()
     if exists:
-        return {"message": "Déjà en favori"}
+        return {"message": "Deja en favori"}
     db.add(UserFavorite(user_id=user_id, recipe_id=recipe_id))
     db.commit()
-    return {"message": "Favori ajouté !"}
-
+    return {"message": "Favori ajoute !"}
 
 @router.get("/{user_id}/favorites", response_model=List[FavoriteResponse])
 def get_favorites(user_id: int, db: Session = Depends(get_db)):
     return db.query(UserFavorite).filter(UserFavorite.user_id == user_id).all()
 
-
 @router.delete("/{user_id}/favorites/{recipe_id}")
 def remove_favorite(user_id: int, recipe_id: int, db: Session = Depends(get_db)):
     fav = db.query(UserFavorite).filter(
-        UserFavorite.user_id   == user_id,
-        UserFavorite.recipe_id == recipe_id,
+        UserFavorite.user_id == user_id, UserFavorite.recipe_id == recipe_id,
     ).first()
     if fav:
         db.delete(fav)
         db.commit()
-    return {"message": "Favori supprimé"}
+    return {"message": "Favori supprime"}
 
 
-# ── Historique paginé ─────────────────────────────────────────────────────────
+# ── Historique pagine ─────────────────────────────────────────────────────────
 
 @router.get("/{user_id}/history", response_model=List[OrderHistoryResponse])
 def get_user_history(
     user_id:   int,
     page:      int           = Query(1,    ge=1),
     page_size: int           = Query(10,   ge=1, le=50),
-    days:      Optional[int] = Query(None, description="Filtrer sur les N derniers jours"),
+    days:      Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
     if not db.get(User, user_id):
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-
+        raise HTTPException(404, "Utilisateur introuvable")
     query = (
         db.query(OrderHistory)
         .options(joinedload(OrderHistory.recipe))
-        .filter(
-            OrderHistory.user_id   == user_id,
-            OrderHistory.recipe_id.isnot(None),
-        )
+        .filter(OrderHistory.user_id == user_id, OrderHistory.recipe_id.isnot(None))
     )
     if days is not None:
         since = datetime.now(timezone.utc) - timedelta(days=days)
         query = query.filter(OrderHistory.timestamp >= since)
-
     return (
         query.order_by(desc(OrderHistory.timestamp))
              .offset((page - 1) * page_size)
@@ -224,11 +404,9 @@ def get_user_stats(
     db: Session = Depends(get_db),
 ):
     if not db.get(User, user_id):
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-
+        raise HTTPException(404, "Utilisateur introuvable")
     since  = datetime.now(timezone.utc) - timedelta(days=days)
     orders = _orders_with_nutrition(db, user_id, since)
-
     if not orders:
         return {
             "period_days": days, "total_orders": 0,
@@ -236,12 +414,10 @@ def get_user_stats(
             "total_alcohol_units": 0.0, "top_cocktails": [],
             "category_breakdown": {}, "average_rating": None,
         }
-
     nutrition       = _calc_nutrition(orders)
     cocktail_counts: Dict[str,int] = {}
     category_counts: Dict[str,int] = {}
-    ratings         = []
-
+    ratings = []
     for order in orders:
         if not order.recipe:
             continue
@@ -250,7 +426,6 @@ def get_user_stats(
         category_counts[cat] = category_counts.get(cat, 0) + 1
         if order.rating is not None:
             ratings.append(order.rating)
-
     return {
         "period_days":         days,
         "total_orders":        len(orders),
@@ -262,7 +437,7 @@ def get_user_stats(
             for n, c in sorted(cocktail_counts.items(), key=lambda x: x[1], reverse=True)[:3]
         ],
         "category_breakdown": category_counts,
-        "average_rating": round(sum(ratings) / len(ratings), 1) if ratings else None,
+        "average_rating": round(sum(ratings)/len(ratings), 1) if ratings else None,
     }
 
 
@@ -276,63 +451,45 @@ def rate_order(
     db: Session = Depends(get_db),
 ):
     if not (1 <= rating_data.rating <= 5):
-        raise HTTPException(status_code=400, detail="La note doit être entre 1 et 5")
-
+        raise HTTPException(400, "La note doit etre entre 1 et 5")
     order = db.query(OrderHistory).filter(
-        OrderHistory.id      == order_id,
-        OrderHistory.user_id == user_id,
+        OrderHistory.id == order_id, OrderHistory.user_id == user_id,
     ).first()
     if not order:
-        raise HTTPException(status_code=404, detail="Commande introuvable ou accès refusé")
-
+        raise HTTPException(404, "Commande introuvable ou acces refuse")
     order.rating  = rating_data.rating
     order.comment = rating_data.comment
     db.commit()
-    return {
-        "message":  "Note enregistrée !",
-        "order_id": order_id,
-        "rating":   order.rating,
-        "comment":  order.comment,
-    }
+    return {"message": "Note enregistree !", "order_id": order_id,
+            "rating": order.rating, "comment": order.comment}
 
 
-# ── Alcoolémie Widmark ────────────────────────────────────────────────────────
+# ── Alcoolomie Widmark ────────────────────────────────────────────────────────
 
 @router.get("/{user_id}/alcoolemia")
 def get_user_alcoolemia(user_id: int, db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user or not user.weight_kg:
         return {"current_bac": 0.0, "status": "Profil incomplet", "can_drive": True}
-
     since  = datetime.now(timezone.utc) - timedelta(hours=12)
     orders = _orders_with_nutrition(db, user_id, since)
-
     if not orders:
-        return {
-            "current_bac":  0.0,
-            "status":       "Totalement sobre 😇",
-            "drinks_count": 0,
-            "can_drive":    True,
-        }
-
+        return {"current_bac": 0.0, "status": "Totalement sobre",
+                "drinks_count": 0, "can_drive": True}
     nutrition       = _calc_nutrition(orders)
     total_alc_grams = nutrition["total_alcohol_grams"]
-
-    first_drink_time = orders[0].timestamp
-    if first_drink_time.tzinfo is None:
-        first_drink_time = first_drink_time.replace(tzinfo=timezone.utc)
-
+    first_drink     = orders[0].timestamp
+    if first_drink.tzinfo is None:
+        first_drink = first_drink.replace(tzinfo=timezone.utc)
     r             = 0.55 if user.gender == 'F' else (0.68 if user.gender == 'M' else 0.61)
-    hours_elapsed = (datetime.now(timezone.utc) - first_drink_time).total_seconds() / 3600.0
+    hours_elapsed = (datetime.now(timezone.utc) - first_drink).total_seconds() / 3600.0
     current_bac   = max(0.0, round(
         total_alc_grams / (user.weight_kg * r) - (0.15 * hours_elapsed), 2
     ))
-
-    if current_bac > 1.0:   status, can_drive = "DANGER : Laisse tes clés 🚑", False
-    elif current_bac > 0.5: status, can_drive = "Ne prends pas le volant 🛑", False
-    elif current_bac > 0.2: status, can_drive = "Légèrement alcoolisé 🍺",    True
-    else:                    status, can_drive = "Apte à conduire 🚗",         True
-
+    if current_bac > 1.0:   status, can_drive = "DANGER : Laisse tes cles", False
+    elif current_bac > 0.5: status, can_drive = "Ne prends pas le volant", False
+    elif current_bac > 0.2: status, can_drive = "Legerement alcoolise",    True
+    else:                   status, can_drive = "Apte a conduire",          True
     return {
         "current_bac":             current_bac,
         "status":                  status,
@@ -342,7 +499,7 @@ def get_user_alcoolemia(user_id: int, db: Session = Depends(get_db)):
     }
 
 
-# ── Recommandations personnalisées ────────────────────────────────────────────
+# ── Recommandations personnalisees ────────────────────────────────────────────
 
 @router.get("/{user_id}/recommendations")
 def get_recommendations(
@@ -352,8 +509,7 @@ def get_recommendations(
     db: Session = Depends(get_db),
 ):
     if not db.get(User, user_id):
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-
+        raise HTTPException(404, "Utilisateur introuvable")
     since       = datetime.now(timezone.utc) - timedelta(days=days)
     user_orders = _orders_with_nutrition(db, user_id, since)
 
@@ -376,9 +532,8 @@ def get_recommendations(
         f.recipe_id for f in
         db.query(UserFavorite).filter(UserFavorite.user_id == user_id).all()
     }
-
-    global_order_counts: Dict[int,int]   = {}
-    global_ratings:      Dict[int,list]  = {}
+    global_order_counts: Dict[int,int]  = {}
+    global_ratings:      Dict[int,list] = {}
     for o in db.query(OrderHistory).filter(
         OrderHistory.timestamp >= since,
         OrderHistory.recipe_id.isnot(None),
@@ -388,28 +543,20 @@ def get_recommendations(
             global_ratings.setdefault(o.recipe_id, []).append(o.rating)
 
     max_global_orders = max(global_order_counts.values(), default=1)
-
     all_recipes = (
         db.query(Recipe)
-        .options(
-            joinedload(Recipe.recipe_ingredients)
-                .joinedload(RecipeIngredient.ingredient)
-        )
+        .options(joinedload(Recipe.recipe_ingredients).joinedload(RecipeIngredient.ingredient))
         .filter(Recipe.is_available == True)
         .all()
     )
-
     scored = []
     for recipe in all_recipes:
         if recipe.id in user_fav_ids:
             continue
-
         score, reasons = 0.0, []
-
         if recipe.category and user_categories.get(recipe.category, 0) > 0:
             score += 3 * (min(user_categories[recipe.category], 5) / 5)
-            reasons.append(f"Catégorie '{recipe.category}' que tu aimes")
-
+            reasons.append(f"Categorie '{recipe.category}' que tu aimes")
         common = [
             ri.ingredient.name for ri in recipe.recipe_ingredients
             if ri.ingredient_id in user_ingredient_ids and ri.ingredient
@@ -417,162 +564,106 @@ def get_recommendations(
         if common:
             score += min(len(common) * 2, 6)
             reasons.append(f"Contient {', '.join(common[:2])} que tu commandes souvent")
-
         if recipe.id in global_ratings:
             avg = sum(global_ratings[recipe.id]) / len(global_ratings[recipe.id])
             score += (avg / 5.0) * 2
             if avg >= 4.0:
-                reasons.append(f"Très bien noté ({avg:.1f}/5)")
-
+                reasons.append(f"Tres bien note ({avg:.1f}/5)")
         if recipe.id in global_order_counts:
             popularity = global_order_counts[recipe.id] / max_global_orders
             score += popularity
             if popularity > 0.5:
                 reasons.append("Populaire en ce moment")
-
         if recipe.id in already_ordered_ids:
             score -= 2
         if recipe.id not in global_order_counts:
             score += 0.5
-            reasons.append("À découvrir ✨")
-
+            reasons.append("A decouvrir")
         scored.append({
-            "id":       recipe.id,
-            "name":     recipe.name,
-            "category": recipe.category,
-            "image_url":recipe.image_url,
-            "score":    round(score, 2),
-            "reasons":  reasons or ["Pour varier les plaisirs"],
+            "id": recipe.id, "name": recipe.name, "category": recipe.category,
+            "image_url": recipe.image_url, "score": round(score, 2),
+            "reasons": reasons or ["Pour varier les plaisirs"],
         })
-
     scored.sort(key=lambda x: x["score"], reverse=True)
-
     if not user_orders:
         for item in scored:
-            item["reasons"] = ["Populaire & bien noté"]
-        return {"user_id": user_id, "mode": "populaire",
-                "recommendations": scored[:limit]}
+            item["reasons"] = ["Populaire & bien note"]
+        return {"user_id": user_id, "mode": "populaire", "recommendations": scored[:limit]}
+    return {"user_id": user_id, "mode": "personnalise",
+            "based_on_orders": len(user_orders), "recommendations": scored[:limit]}
 
-    return {
-        "user_id":           user_id,
-        "mode":              "personnalisé",
-        "based_on_orders":   len(user_orders),
-        "recommendations":   scored[:limit],
-    }
 
-# ── Dépenses ──────────────────────────────────────────────────────────────────
+# ── Depenses ──────────────────────────────────────────────────────────────────
 
 @router.get("/{user_id}/spending")
 def get_user_spending(user_id: int, db: Session = Depends(get_db)):
-    """
-    Dépenses de la session courante (12 dernières heures) et comparaison
-    avec la session précédente.
-
-    Retourne :
-      total_tonight    : coût de revient total ce soir (€)
-      count_tonight    : nombre de cocktails commandés
-      avg_tonight      : coût moyen par cocktail (€)
-      orders           : détail de chaque commande avec coût snapshotté
-      prev_session_total : total de la session précédente (€) — None si aucune
-    """
     if not db.get(User, user_id):
-        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-
-    now    = datetime.now(timezone.utc)
-    since  = now - timedelta(hours=12)
-
-    # ── Session courante ──────────────────────────────────────────────────────
+        raise HTTPException(404, "Utilisateur introuvable")
+    now   = datetime.now(timezone.utc)
+    since = now - timedelta(hours=12)
     tonight_orders = (
         db.query(OrderHistory)
         .options(joinedload(OrderHistory.recipe))
-        .filter(
-            OrderHistory.user_id   == user_id,
-            OrderHistory.timestamp >= since,
-            OrderHistory.recipe_id.isnot(None),
-        )
+        .filter(OrderHistory.user_id == user_id, OrderHistory.timestamp >= since,
+                OrderHistory.recipe_id.isnot(None))
         .order_by(desc(OrderHistory.timestamp))
         .all()
     )
-
-    total_tonight = sum(
-        o.cost_price for o in tonight_orders if o.cost_price is not None
-    )
+    total_tonight = sum(o.cost_price for o in tonight_orders if o.cost_price is not None)
     count_tonight = len(tonight_orders)
     avg_tonight   = (total_tonight / count_tonight) if count_tonight > 0 else 0.0
-
     orders_detail = [
-        {
-            "recipe_name": o.recipe.name if o.recipe else None,
-            "time":        o.timestamp.strftime("%H:%M"),
-            "cost_price":  o.cost_price,
-        }
+        {"recipe_name": o.recipe.name if o.recipe else None,
+         "time": o.timestamp.strftime("%H:%M"), "cost_price": o.cost_price}
         for o in tonight_orders
     ]
-
-    # ── Session précédente — fenêtre 12-36h avant maintenant ─────────────────
-    # On cherche la session juste avant celle d'aujourd'hui pour la comparaison.
-    prev_end   = since
-    prev_start = prev_end - timedelta(hours=24)
-
-    prev_orders = (
-        db.query(OrderHistory)
-        .filter(
-            OrderHistory.user_id   == user_id,
-            OrderHistory.timestamp >= prev_start,
-            OrderHistory.timestamp <  prev_end,
-            OrderHistory.recipe_id.isnot(None),
-        )
-        .all()
-    )
-
-    prev_costs = [o.cost_price for o in prev_orders if o.cost_price is not None]
+    prev_end, prev_start = since, since - timedelta(hours=24)
+    prev_orders = db.query(OrderHistory).filter(
+        OrderHistory.user_id == user_id,
+        OrderHistory.timestamp >= prev_start,
+        OrderHistory.timestamp <  prev_end,
+        OrderHistory.recipe_id.isnot(None),
+    ).all()
+    prev_costs         = [o.cost_price for o in prev_orders if o.cost_price is not None]
     prev_session_total = round(sum(prev_costs), 3) if prev_costs else None
-
     return {
-        "total_tonight":      round(total_tonight, 3),
-        "count_tonight":      count_tonight,
-        "avg_tonight":        round(avg_tonight,   3),
-        "orders":             orders_detail,
+        "total_tonight": round(total_tonight, 3), "count_tonight": count_tonight,
+        "avg_tonight": round(avg_tonight, 3), "orders": orders_detail,
         "prev_session_total": prev_session_total,
     }
 
-# ── Espace Patron (Comptabilité globale) ──────────────────────────────────────
+
+# ── Espace Patron ─────────────────────────────────────────────────────────────
 
 @router.get("/{user_id}/admin-stats")
 def get_admin_stats(user_id: int, db: Session = Depends(get_db)):
-    """Retourne la comptabilité globale de la machine (réservé aux admins)."""
     user = db.get(User, user_id)
     if not user or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Accès refusé. Mode Patron uniquement.")
-
-    # On récupère tout l'historique avec le prix des recettes
-    orders = db.query(OrderHistory).options(joinedload(OrderHistory.recipe)).all()
-
-    total_revenue = 0.0
-    total_cost = 0.0
-
-    for o in orders:
-        # Prix de vente (si le cocktail a un prix)
-        price = o.recipe.price if o.recipe and o.recipe.price else 0.0
-        # Coût de revient (sauvegardé au moment de la commande)
-        cost = o.cost_price if o.cost_price else 0.0
-        
-        total_revenue += price
-        total_cost += cost
-
-    total_margin = total_revenue - total_cost
-
+        raise HTTPException(403, "Acces refuse. Mode Patron uniquement.")
+    orders        = db.query(OrderHistory).options(joinedload(OrderHistory.recipe)).all()
+    total_revenue = sum((o.sale_price or 0.0) for o in orders)
+    total_cost    = sum((o.cost_price   or 0.0) for o in orders)
     return {
-        "total_orders": len(orders),
+        "total_orders":  len(orders),
         "total_revenue": round(total_revenue, 2),
-        "total_cost": round(total_cost, 2),
-        "total_margin": round(total_margin, 2),
+        "total_cost":    round(total_cost, 2),
+        "total_margin":  round(total_revenue - total_cost, 2),
     }
 
+
+# ── Liste tous les users (admin seulement) ───────────────────────────────────
+
 @router.get("/", response_model=List[UserResponse])
-def get_all_users(db: Session = Depends(get_db)):
+def get_all_users(
+    db:            Session = Depends(get_db),
+    x_admin_token: Optional[str] = Header(default=None),
+):
     """
-    Liste tous les utilisateurs (accessible uniquement par l'admin)
+    Retourne tous les utilisateurs.
+    [CORRECTIF] Protege par token admin — retournait avant noms/UIDs/soldes
+                sans aucune authentification.
     """
-    users = db.query(User).all()
-    return users
+    secret = os.getenv("BAROS_ADMIN_SECRET")
+    if not secret or x_admin_token != secret:
+        raise HTTPException(403, "Acces refuse")
+    return db.query(User).all()

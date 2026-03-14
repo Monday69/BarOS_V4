@@ -1,17 +1,36 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// ProfilePage.jsx
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../context/UserContext';
 import { useNavigate } from 'react-router-dom';
 import {
   LogOut, Activity, ShieldCheck, AlertTriangle, Car, Wine,
   User as UserIcon, Star, Zap, Flame, Droplets,
   Clock, ChevronRight, BarChart2, Sparkles, Euro, TrendingUp, TrendingDown,
-  Minus, Percent, Save, BarChart3, Wallet, CreditCard, ToggleLeft, ToggleRight, Plus
+  Minus, Percent, Save, BarChart3, Wallet, CreditCard, ToggleLeft, ToggleRight, Plus,
+  Heart, ArrowRight
 } from 'lucide-react';
+import { FileSpreadsheet } from 'lucide-react';
 import axios from 'axios';
+import { API_BASE_URL } from '../apiConfig';
 
-const API       = 'http://localhost:8000/api/users';
-const ADMIN_API = 'http://localhost:8000/api/admin';
-const PAY_API   = 'http://localhost:8000/api/payments';
+const API_BASE = API_BASE_URL;
+const API      = `${API_BASE_URL}/users`;
+const ADMIN_API = `${API_BASE_URL}/admin`;
+const PAY_API  = `${API_BASE_URL}/payments`;
+
+const FALLBACK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%231a1a1a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23333' font-size='48'%3E🍹%3C/text%3E%3C/svg%3E";
+
+const getAdminKey = () => sessionStorage.getItem('baros_admin_key') ?? '';
+const saveAdminKey = (k) => { if (k) sessionStorage.setItem('baros_admin_key', k); };
+const promptAdminKey = (msg = 'Clé admin :') => {
+  const existing = getAdminKey();
+  if (existing) return existing;
+  const entered = window.prompt(msg);
+  if (entered) saveAdminKey(entered);
+  return entered;
+};
+const adminHeaders = (key) => ({ 'x-admin-token': key });
 
 // ─── Composants utilitaires ───────────────────────────────────────────────────
 
@@ -62,7 +81,153 @@ function SectionTitle({ icon, title, subtitle }) {
   );
 }
 
-// ─── Carte solde (visible par tous les users) ─────────────────────────────────
+// ─── Section Mes Favoris ──────────────────────────────────────────────────────
+
+function FavoritesSection({ userId }) {
+  const navigate             = useNavigate();
+  const { favorites, toggleFavorite } = useUser();
+  const [favRecipes, setFavRecipes]   = useState([]);
+  const [allRecipes, setAllRecipes]   = useState([]);
+  const [ratings, setRatings]         = useState({});
+  const [loading, setLoading]         = useState(true);
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const [recipesRes, ratingsRes] = await Promise.all([
+          axios.get(`${API_BASE}/cocktails/?available_only=false&limit=200`),
+          axios.get(`${API_BASE}/cocktails/ratings/all`),
+        ]);
+        setAllRecipes(recipesRes.data);
+        setRatings(ratingsRes.data);
+      } catch (e) {
+        console.error("Erreur chargement favoris:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAll();
+  }, []);
+
+  useEffect(() => {
+    const favs = allRecipes.filter(r => favorites.includes(r.id));
+    setFavRecipes(favs);
+  }, [favorites, allRecipes]);
+
+  if (loading) return (
+    <div className="bg-[#111] rounded-3xl p-7 border border-white/[0.08]">
+      <SectionTitle icon={<Heart size={18} />} title="Mes Favoris" />
+      <div className="h-24 flex items-center justify-center text-gray-600 text-sm animate-pulse">Chargement…</div>
+    </div>
+  );
+
+  return (
+    <div className="bg-[#111] rounded-3xl p-7 border border-red-500/10">
+      <div className="flex items-start justify-between mb-6">
+        <SectionTitle
+          icon={<Heart size={18} className="text-red-400 fill-red-400" />}
+          title="Mes Favoris"
+          subtitle={favRecipes.length > 0 ? `${favRecipes.length} cocktail${favRecipes.length > 1 ? 's' : ''} likés` : 'Aucun favori pour le moment'}
+        />
+        {favRecipes.length > 0 && (
+          <button
+            onClick={() => navigate('/')}
+            className="text-xs text-gray-500 hover:text-orange-400 transition-colors flex items-center gap-1 shrink-0"
+          >
+            Voir le bar <ArrowRight size={12} />
+          </button>
+        )}
+      </div>
+
+      {favRecipes.length === 0 ? (
+        <div className="text-center py-10">
+          <Heart size={40} className="text-gray-800 mx-auto mb-3" />
+          <p className="text-gray-600 text-sm">Appuie sur ❤️ sur la fiche d'un cocktail pour l'ajouter ici.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {favRecipes.map(recipe => {
+            const rating = ratings[recipe.id];
+            return (
+              <div
+                key={recipe.id}
+                className="group relative bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] hover:border-red-500/20 rounded-2xl overflow-hidden transition-all cursor-pointer"
+                onClick={() => navigate(`/cocktail/${recipe.id}`)}
+              >
+                {/* Mini image en fond */}
+                {recipe.image_url && (
+                  <div
+                    className="absolute inset-0 bg-cover bg-center opacity-[0.06] group-hover:opacity-[0.1] transition-opacity"
+                    style={{ backgroundImage: `url(${recipe.image_url})` }}
+                  />
+                )}
+                <div className="relative p-4 flex items-center gap-4">
+                  {/* Thumbnail */}
+                  <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-white/5">
+                    <img
+                      src={recipe.image_url || FALLBACK_IMG}
+                      alt={recipe.name}
+                      className="w-full h-full object-cover"
+                      onError={e => { e.target.src = FALLBACK_IMG; }}
+                    />
+                  </div>
+
+                  {/* Infos */}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-white truncate">{recipe.name}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {rating?.average ? (
+                        <>
+                          <div className="flex gap-0.5">
+                            {[1,2,3,4,5].map(n => (
+                              <Star key={n} size={10}
+                                className={n <= Math.round(rating.average)
+                                  ? 'text-amber-400 fill-amber-400'
+                                  : 'text-gray-700'} />
+                            ))}
+                          </div>
+                          <span className="text-amber-400 text-xs font-bold">{rating.average}</span>
+                        </>
+                      ) : (
+                        <span className="text-gray-600 text-xs">Pas encore noté</span>
+                      )}
+                      {recipe.price > 0 && (
+                        <span className="text-orange-400 text-xs font-mono ml-auto">{recipe.price.toFixed(2)} €</span>
+                      )}
+                    </div>
+                    {/* Ingrédients en mini */}
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {recipe.ingredients.slice(0, 3).map(ing => (
+                        <span key={typeof ing === 'string' ? ing : ing.name}
+                          className="text-[10px] text-gray-600 bg-white/5 px-1.5 py-0.5 rounded">
+                          {typeof ing === 'string' ? ing : ing.name}
+                        </span>
+                      ))}
+                      {recipe.ingredients.length > 3 && (
+                        <span className="text-[10px] text-gray-700">+{recipe.ingredients.length - 3}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bouton unlike */}
+                  <button
+                    onClick={e => { e.stopPropagation(); toggleFavorite(recipe.id); }}
+                    className="shrink-0 p-2 rounded-full hover:bg-red-500/10 transition-all group/heart"
+                    title="Retirer des favoris"
+                  >
+                    <Heart size={16} className="text-red-400 fill-red-400 group-hover/heart:fill-transparent transition-all" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Carte solde ──────────────────────────────────────────────────────────────
 
 function SoldeCard({ userId, navigate }) {
   const [balance,  setBalance]  = useState(null);
@@ -89,11 +254,8 @@ function SoldeCard({ userId, navigate }) {
 
   return (
     <div className="bg-[#111] rounded-3xl border border-white/[0.08] overflow-hidden">
-      {/* Ligne principale */}
-      <button
-        onClick={() => setExpanded(o => !o)}
-        className="w-full flex items-center justify-between p-7 hover:bg-white/[0.02] transition-colors"
-      >
+      <div onClick={() => setExpanded(o => !o)}
+        className="w-full flex items-center justify-between p-7 hover:bg-white/[0.02] transition-colors cursor-pointer">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
             <Wallet size={22} className="text-violet-400" />
@@ -112,28 +274,22 @@ function SoldeCard({ userId, navigate }) {
         <div className="flex items-center gap-3">
           <button
             onClick={e => { e.stopPropagation(); navigate('/payment', { state: { userId } }); }}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500
-                       text-white text-sm font-bold rounded-xl transition-all"
-          >
+            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold rounded-xl transition-all">
             <Plus size={14} /> Recharger
           </button>
           <ChevronRight size={16} className={`text-gray-600 transition-transform ${expanded ? 'rotate-90' : ''}`} />
         </div>
-      </button>
+      </div>
 
-      {/* Historique transactions */}
       {expanded && (
         <div className="border-t border-white/[0.06] px-7 pb-5 pt-4">
-          <div className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-3">
-            Dernières transactions
-          </div>
+          <div className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-3">Dernières transactions</div>
           {history.length === 0 ? (
             <div className="text-gray-600 text-sm text-center py-4">Aucune transaction.</div>
           ) : (
             <div className="space-y-2">
               {history.map(tx => (
-                <div key={tx.id} className="flex items-center justify-between px-4 py-3
-                                             bg-white/[0.02] border border-white/[0.05] rounded-xl">
+                <div key={tx.id} className="flex items-center justify-between px-4 py-3 bg-white/[0.02] border border-white/[0.05] rounded-xl">
                   <div>
                     <div className="text-white text-sm font-semibold">{typeLabel(tx)}</div>
                     <div className="text-gray-600 text-xs mt-0.5">
@@ -208,8 +364,8 @@ function AlcoolemieSection({ userId }) {
 // ─── Section Dépenses ─────────────────────────────────────────────────────────
 
 function DepensesSection({ userId }) {
-  const [data, setData]           = useState(null);
-  const [loading, setLoading]     = useState(true);
+  const [data, setData]             = useState(null);
+  const [loading, setLoading]       = useState(true);
   const [showDetail, setShowDetail] = useState(false);
 
   useEffect(() => {
@@ -370,7 +526,9 @@ function StatsSection({ userId }) {
 
 // ─── Section Historique + Notation ───────────────────────────────────────────
 
-const formatDate = (ts) => new Date(ts).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const formatDate = (ts) => new Date(ts).toLocaleDateString('fr-FR', {
+  day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+});
 
 function HistoriqueSection({ userId }) {
   const [orders, setOrders]         = useState([]);
@@ -491,120 +649,257 @@ function RecoSection({ userId }) {
   );
 }
 
-function EspacePatron() {
-  const [adminStats, setAdminStats] = useState(null);
-  const [margin, setMargin] = useState(0);
-  const [marginInput, setMarginInput] = useState(0);
-  const [marginSaving, setMarginSaving] = useState(false);
-  const [marginSaved, setMarginSaved] = useState(false);
-  const [requirePay, setRequirePay] = useState(false);
-  const [toggleSaving, setToggleSaving] = useState(false);
-  const [rechargeUser, setRechargeUser] = useState('');
-  const [rechargeAmt, setRechargeAmt] = useState(10);
-  const [rechargeSaving, setRechargeSaving] = useState(false);
-  const [rechargeMsg, setRechargeMsg] = useState(null);
-  const [users, setUsers] = useState([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
+function UserSearchDropdown({ users, value, onChange }) {
+  const [open, setOpen]     = useState(false);
+  const [search, setSearch] = useState('');
+  const ref                 = useRef(null);
 
-  const ADMIN_KEY = "BarOS_Admin_Secret";
+  const selected = users.find(u => String(u.id) === String(value));
+  const filtered = users.filter(u =>
+    u.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   useEffect(() => {
-    // Stats admin
-    axios.get(`${API}/0/admin-stats`).then(r => setAdminStats(r.data)).catch(() => {});
-    
-    // Marge
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all
+          ${open ? 'border-violet-500/60 bg-violet-600/10' : 'border-white/[0.08] bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06]'}`}
+      >
+        {selected ? (
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg bg-violet-500 flex items-center justify-center text-xs font-black text-white shrink-0">
+              {selected.name.charAt(0).toUpperCase()}
+            </div>
+            <span className="text-white font-semibold text-sm">{selected.name}</span>
+            {selected.balance != null && (
+              <span className="text-gray-500 text-xs font-mono">{selected.balance.toFixed(2)} €</span>
+            )}
+          </div>
+        ) : (
+          <span className="text-gray-500 text-sm">Choisir un utilisateur…</span>
+        )}
+        <ChevronRight size={14} className={`text-gray-500 transition-transform shrink-0 ${open ? 'rotate-90' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden shadow-2xl shadow-black/60">
+          <div className="p-2 border-b border-white/[0.06]">
+            <input
+              autoFocus
+              type="text"
+              placeholder="Rechercher…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-600 outline-none focus:border-violet-500/50"
+            />
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="text-center text-gray-600 text-sm py-6">Aucun résultat</div>
+            ) : (
+              filtered.map(u => (
+                <button
+                  key={u.id}
+                  onClick={() => { onChange(String(u.id)); setOpen(false); setSearch(''); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors
+                    ${String(value) === String(u.id)
+                      ? 'bg-violet-600/20 text-white'
+                      : 'text-gray-300 hover:bg-white/[0.05] hover:text-white'}`}
+                >
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0
+                    ${String(value) === String(u.id) ? 'bg-violet-500 text-white' : 'bg-white/10 text-gray-400'}`}>
+                    {u.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate">{u.name}</div>
+                    {u.balance != null && (
+                      <div className="text-xs text-gray-600 font-mono">{u.balance.toFixed(2)} €</div>
+                    )}
+                  </div>
+                  {String(value) === String(u.id) && (
+                    <div className="w-2 h-2 rounded-full bg-violet-400 shrink-0" />
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Espace Patron ────────────────────────────────────────────────────────────
+
+function EspacePatron() {
+  const { user } = useUser();
+
+  const [adminKey,      setAdminKey]      = useState(() => getAdminKey());
+  const [adminStats,    setAdminStats]    = useState(null);
+  const [margin,        setMargin]        = useState(0);
+  const [marginInput,   setMarginInput]   = useState(0);
+  const [marginSaving,  setMarginSaving]  = useState(false);
+  const [marginSaved,   setMarginSaved]   = useState(false);
+  const [requirePay,    setRequirePay]    = useState(false);
+  const [toggleSaving,  setToggleSaving]  = useState(false);
+  const [rechargeUser,  setRechargeUser]  = useState('');
+  const [rechargeAmt,   setRechargeAmt]   = useState(10);
+  const [rechargeSaving,setRechargeSaving]= useState(false);
+  const [rechargeMsg,   setRechargeMsg]   = useState(null);
+  const [users,         setUsers]         = useState([]);
+
+  const ensureKeyAndLoadUsers = useCallback(async (key) => {
+    try {
+      const res = await axios.get(`${API}/`, { headers: adminHeaders(key) });
+      setUsers(res.data);
+    } catch (e) {
+      if (e.response?.status === 403) {
+        sessionStorage.removeItem('baros_admin_key');
+        setAdminKey('');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    axios.get(`${API}/${user.id}/admin-stats`).then(r => setAdminStats(r.data)).catch(() => {});
     axios.get(`${ADMIN_API}/margin`).then(r => {
       setMargin(r.data.margin_percent);
       setMarginInput(r.data.margin_percent);
     }).catch(() => {});
-    
-    // Config paiement
     axios.get(`${PAY_API}/config`).then(r => setRequirePay(r.data.require_payment)).catch(() => {});
-    
-    // Charger les utilisateurs
-    setLoadingUsers(true);
-    axios.get(`http://localhost:8000/api/users/`, {
-      headers: { 'x-admin-token': ADMIN_KEY }
-    })
-      .then(r => {
-        setUsers(r.data);
-        console.log("✅ Utilisateurs chargés:", r.data);
-      })
-      .catch(err => {
-        console.error("❌ Erreur chargement utilisateurs:", err);
-      })
-      .finally(() => setLoadingUsers(false));
-  }, []);
+    const key = getAdminKey() || window.prompt('Clé admin (pour la liste des recharges) :');
+    if (key) {
+      saveAdminKey(key);
+      setAdminKey(key);
+      ensureKeyAndLoadUsers(key);
+    }
+  }, [user, ensureKeyAndLoadUsers]);
+
+  const requireKey = (msg) => {
+    if (adminKey) return adminKey;
+    const k = window.prompt(msg ?? 'Clé admin :');
+    if (k) { saveAdminKey(k); setAdminKey(k); }
+    return k || null;
+  };
 
   const saveMargin = async () => {
-    const pwd = window.prompt("Clé admin :");
-    if (!pwd) return;
+    const key = requireKey('Clé admin :');
+    if (!key) return;
     setMarginSaving(true);
     try {
-      const r = await axios.put(`${ADMIN_API}/margin`, { margin_percent: parseFloat(marginInput) }, { headers: { 'x-admin-token': pwd } });
+      const r = await axios.put(`${ADMIN_API}/margin`,
+        { margin_percent: parseFloat(marginInput) },
+        { headers: adminHeaders(key) }
+      );
       setMargin(r.data.margin_percent);
       setMarginSaved(true);
       setTimeout(() => setMarginSaved(false), 2500);
-    } catch { alert("❌ Clé invalide"); }
-    finally { setMarginSaving(false); }
+    } catch {
+      alert('❌ Clé invalide');
+      sessionStorage.removeItem('baros_admin_key');
+      setAdminKey('');
+    } finally { setMarginSaving(false); }
   };
 
   const toggleRequirePay = async () => {
-    const pwd = window.prompt("Clé admin pour modifier le mode paiement :");
-    if (!pwd) return;
+    const key = requireKey('Clé admin pour modifier le mode paiement :');
+    if (!key) return;
     setToggleSaving(true);
     try {
-      await axios.put(`${ADMIN_API}/payment-config`, { require_payment: !requirePay }, { headers: { 'x-admin-token': pwd } });
-      setRequirePay(r => !r);
-    } catch { alert("❌ Clé invalide"); }
-    finally { setToggleSaving(false); }
+      await axios.put(`${ADMIN_API}/payment-config`,
+        { require_payment: !requirePay },
+        { headers: adminHeaders(key) }
+      );
+      setRequirePay(v => !v);
+    } catch {
+      alert('❌ Clé invalide');
+      sessionStorage.removeItem('baros_admin_key');
+      setAdminKey('');
+    } finally { setToggleSaving(false); }
+  };
+
+  const resetUserPin = async (uid, uname) => {
+    const key = requireKey(`Clé admin pour reset le PIN de ${uname} :`);
+    if (!key) return;
+    try {
+      await axios.post(`${API}/reset-pin`, { user_id: uid }, { headers: adminHeaders(key) });
+      alert(`✅ PIN de ${uname} réinitialisé.`);
+    } catch {
+      alert('❌ Clé invalide');
+      sessionStorage.removeItem('baros_admin_key');
+      setAdminKey('');
+    }
   };
 
   const doManualRecharge = async () => {
     if (!rechargeUser || rechargeAmt <= 0) return;
-    const pwd = window.prompt("Clé admin pour confirmer la recharge :");
-    if (!pwd) return;
+    const key = requireKey('Clé admin pour confirmer la recharge :');
+    if (!key) return;
     setRechargeSaving(true);
     try {
       const r = await axios.post(`${PAY_API}/manual-recharge`,
-        { user_id: parseInt(rechargeUser), amount: rechargeAmt, description: "Recharge manuelle admin" },
-        { headers: { 'x-admin-token': pwd } }
+        { user_id: parseInt(rechargeUser), amount: rechargeAmt, description: 'Recharge manuelle admin' },
+        { headers: adminHeaders(key) }
       );
       setRechargeMsg(`✅ ${r.data.user} → ${r.data.new_balance.toFixed(2)} €`);
       setTimeout(() => setRechargeMsg(null), 4000);
-    } catch { alert("❌ Erreur recharge"); }
-    finally { setRechargeSaving(false); }
+    } catch {
+      alert('❌ Erreur recharge');
+    } finally { setRechargeSaving(false); }
   };
 
   const handleClearHistory = async () => {
-    const pwd = window.prompt("Zone Danger ⚠️ : Mot de passe Admin pour purger l'historique :");
-    if (!pwd) return;
+    const key = requireKey('Zone Danger ⚠️ : Clé admin pour purger l\'historique :');
+    if (!key) return;
     try {
-      await axios.delete(`${ADMIN_API}/clear-history`, { headers: { 'x-admin-token': pwd } });
-      alert("✅ Base de données purgée !");
+      await axios.delete(`${ADMIN_API}/clear-history`, { headers: adminHeaders(key) });
+      alert('✅ Base de données purgée !');
       setAdminStats({ total_orders: 0, total_revenue: 0, total_cost: 0, total_margin: 0 });
-    } catch { alert("❌ Mauvais mot de passe."); }
+    } catch { alert('❌ Mauvaise clé.'); }
   };
 
   const handleExportCSV = async () => {
-    const pwd = window.prompt("Mot de passe Admin pour exporter :");
-    if (!pwd) return;
+    const key = requireKey('Clé admin pour exporter :');
+    if (!key) return;
     try {
-      const res = await axios.get(`${ADMIN_API}/export/csv`, { headers: { 'x-admin-token': pwd }, responseType: 'blob' });
+      const res = await axios.get(`${ADMIN_API}/export/csv`,
+        { headers: adminHeaders(key), responseType: 'blob' }
+      );
       const url  = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href  = url;
       link.setAttribute('download', `BarOS_Compta_${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link); link.click(); link.remove();
-    } catch { alert("❌ Échec de l'export."); }
+    } catch { alert('❌ Échec de l\'export.'); }
+  };
+
+  const handleExportUsers = async () => {
+    const key = requireKey('Clé admin pour exporter les utilisateurs :');
+    if (!key) return;
+    try {
+      const res = await axios.get(`${ADMIN_API}/export/users`,
+        { headers: adminHeaders(key), responseType: 'blob' }
+      );
+      const url  = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href  = url;
+      link.setAttribute('download', `BarOS_Users_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link); link.click(); link.remove();
+    } catch { alert('❌ Échec export utilisateurs'); }
   };
 
   return (
     <div className="bg-gradient-to-br from-emerald-900/30 to-teal-900/30 border border-emerald-500/30 rounded-3xl p-6 md:p-8 relative overflow-hidden shadow-lg shadow-emerald-900/20">
       <div className="absolute -top-10 -right-10 text-emerald-500/10 rotate-12"><TrendingUp size={150} /></div>
       <div className="relative z-10 space-y-6">
-
-        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h2 className="text-2xl font-black text-emerald-400 flex items-center gap-3">
             <BarChart3 size={28} /> Espace Patron
@@ -614,6 +909,10 @@ function EspacePatron() {
               className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/40 border border-emerald-500/50 text-emerald-300 rounded-xl text-sm font-bold transition-all">
               <Euro size={16} /> Exporter .CSV
             </button>
+            <button onClick={handleExportUsers}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/40 border border-emerald-500/50 text-emerald-300 rounded-xl text-sm font-bold transition-all">
+              <FileSpreadsheet size={16} /> Export Users
+            </button>
             <button onClick={handleClearHistory}
               className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-sm font-bold transition-all">
               <AlertTriangle size={16} /> Remise à zéro
@@ -621,7 +920,6 @@ function EspacePatron() {
           </div>
         </div>
 
-        {/* Stats financières */}
         {adminStats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-black/40 border border-white/5 p-5 rounded-2xl">
@@ -643,7 +941,6 @@ function EspacePatron() {
           </div>
         )}
 
-        {/* Toggle Paiement requis */}
         <div className="bg-black/30 border border-white/5 rounded-2xl p-5">
           <div className="flex items-center justify-between">
             <div>
@@ -665,65 +962,47 @@ function EspacePatron() {
           </div>
         </div>
 
-        {/* Recharge manuelle */}
         <div className="bg-black/30 border border-white/5 rounded-2xl p-5">
           <div className="flex items-center gap-2 text-sm font-bold text-white mb-4">
             <Wallet size={15} className="text-violet-400" /> Recharge manuelle
           </div>
-          
-          {loadingUsers ? (
-            <div className="text-center py-4 text-gray-500 animate-pulse">
-              Chargement des utilisateurs...
+          <div className="mb-3 relative">
+            <div className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-2">Bénéficiaire</div>
+            <UserSearchDropdown users={users} value={rechargeUser} onChange={setRechargeUser} />
+          </div>
+          <div className="mb-3">
+            <div className="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-2">Montant</div>
+            <div className="grid grid-cols-4 gap-2">
+              {[5, 10, 20, 50].map(a => (
+                <button key={a} onClick={() => setRechargeAmt(a)}
+                  className={`py-2.5 rounded-xl font-bold text-sm transition-all border
+                    ${rechargeAmt === a
+                      ? 'bg-violet-600/30 border-violet-500/60 text-white'
+                      : 'bg-white/[0.03] border-white/[0.08] text-gray-400 hover:bg-white/[0.07] hover:text-white'}`}>
+                  {a} €
+                </button>
+              ))}
             </div>
-          ) : users.length === 0 ? (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm mb-4">
-              ❌ Aucun utilisateur trouvé dans la base de données
-            </div>
-          ) : (
-            <div className="flex gap-2 mb-3">
-              <select 
-                value={rechargeUser} 
-                onChange={e => setRechargeUser(e.target.value)}
-                className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-violet-500/50 cursor-pointer"
-              >
-                <option value="" className="bg-[#111] text-gray-400">Choisir un utilisateur…</option>
-                {users.map(u => (
-                  <option key={u.id} value={u.id} className="bg-[#1a1a1a] text-white">
-                    {u.name} - {u.balance?.toFixed(2)}€
-                  </option>
-                ))}
-              </select>
-              <select 
-                value={rechargeAmt} 
-                onChange={e => setRechargeAmt(Number(e.target.value))}
-                className="w-24 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-violet-500/50 cursor-pointer"
-              >
-                {[5, 10, 20, 50, 100].map(a => (
-                  <option key={a} value={a} className="bg-[#1a1a1a] text-emerald-400">
-                    {a} €
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          
-          <button 
-            onClick={doManualRecharge} 
-            disabled={!rechargeUser || rechargeSaving || users.length === 0}
-            className="w-full py-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(124,58,237,0.2)]"
-          >
-            <Plus size={15} /> 
-            {rechargeSaving ? 'Traitement…' : `Créditer ${rechargeAmt} €`}
-          </button>
-          
-          {rechargeMsg && (
-            <p className="text-emerald-400 text-xs text-center font-bold mt-2 animate-pulse">
-              {rechargeMsg}
-            </p>
-          )}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={doManualRecharge} disabled={!rechargeUser || rechargeSaving}
+              className="flex-1 py-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-30 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2">
+              <Plus size={15} /> {rechargeSaving ? 'Traitement…' : `Créditer ${rechargeAmt} €`}
+            </button>
+            {rechargeUser && (
+              <button
+                onClick={() => {
+                  const u = users.find(u => String(u.id) === String(rechargeUser));
+                  if (u) resetUserPin(u.id, u.name);
+                }}
+                className="px-3 py-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-xl text-xs font-bold transition-all">
+                Reset PIN
+              </button>
+            )}
+          </div>
+          {rechargeMsg && <p className="text-emerald-400 text-xs text-center font-bold mt-2 animate-pulse">{rechargeMsg}</p>}
         </div>
-        
-        {/* Slider Marge */}
+
         <div className="bg-black/30 border border-white/5 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -750,7 +1029,6 @@ function EspacePatron() {
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );
@@ -805,11 +1083,11 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* ── SOLDE (visible par tous) ── */}
         <SoldeCard userId={user.id} navigate={navigate} />
-
-        {/* ── ESPACE PATRON (admin only) ── */}
         {user.is_admin && <EspacePatron />}
+
+        {/* ── Section Favoris — placée après le solde, avant l'alcoolémie ── */}
+        <FavoritesSection userId={user.id} />
 
         <AlcoolemieSection userId={user.id} />
         <DepensesSection   userId={user.id} />

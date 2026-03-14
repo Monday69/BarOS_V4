@@ -1,14 +1,14 @@
+// CocktailPage.jsx
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Play, Droplets, Clock, Loader2, Heart,
-  CheckCircle, AlertCircle, Euro, ChevronDown, ChevronUp
-} from 'lucide-react';
+  CheckCircle, AlertCircle, Euro, ChevronDown, ChevronUp, ListPlus, Users, Star
+} from 'lucide-react'; // 🆕 ListPlus et Users ajoutés
 import axios from 'axios';
 import { useUser } from '../context/UserContext';
-
-const API = 'http://localhost:8000/api';
-
+import { API_BASE_URL } from '../apiConfig';
 const FALLBACK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'%3E%3Crect width='400' height='400' fill='%231a1a1a'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23333' font-size='72'%3E🍹%3C/text%3E%3C/svg%3E";
 
 const WIDMARK_R = { F: 0.55, M: 0.68, default: 0.61 };
@@ -155,6 +155,47 @@ function CostBreakdown({ cocktail }) {
   );
 }
 
+function StarDisplay({ average, count }) {
+  if (!average) return null;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex gap-0.5">
+        {[1,2,3,4,5].map(n => (
+          <Star key={n} size={18}
+            className={n <= Math.round(average)
+              ? 'text-amber-400 fill-amber-400'
+              : 'text-gray-700 fill-gray-700'} />
+        ))}
+      </div>
+      <span className="text-amber-400 font-bold text-sm">{average}/5</span>
+      <span className="text-gray-600 text-xs">({count} avis)</span>
+    </div>
+  );
+}
+
+function MixingInstruction({ method }) {
+  if (!method) return null;
+  const isShaker = method === 'shaker';
+  return (
+    <div className={`rounded-2xl border px-5 py-4 flex items-start gap-4
+      ${isShaker
+        ? 'bg-orange-500/5 border-orange-500/20'
+        : 'bg-blue-500/5 border-blue-500/20'}`}>
+      <span className="text-2xl shrink-0">{isShaker ? '🍸' : '🥄'}</span>
+      <div>
+        <div className={`text-sm font-bold mb-1 ${isShaker ? 'text-orange-400' : 'text-blue-400'}`}>
+          {isShaker ? 'Shake !' : 'Touiller'}
+        </div>
+        <p className="text-gray-400 text-xs leading-relaxed">
+          {isShaker
+            ? 'Une fois le verre rempli, secoue énergiquement le shaker pendant 10 secondes avant de servir.'
+            : 'Mélange délicatement avec une cuillère à cocktail pour ne pas écraser les arômes.'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function CocktailPage() {
   const { id }       = useParams();
@@ -164,27 +205,33 @@ export default function CocktailPage() {
 
   const [cocktail,  setCocktail]  = useState(null);
   const [loading,   setLoading]   = useState(true);
-  const [isPouring, setIsPouring] = useState(false);
+  const [isPouring,  setIsPouring]  = useState(false);
+  const [isQueuing,  setIsQueuing]  = useState(false);
+  const [queuedOk,   setQueuedOk]   = useState(false);
   const [imgError,  setImgError]  = useState(false);
   const [balance,   setBalance]   = useState(null);
   const [payConfig, setPayConfig] = useState({ require_payment: false });
+  const [ratings, setRatings] = useState(null);
 
   const isFav = cocktail && favorites.includes(cocktail.id);
 
   useEffect(() => {
     setLoading(true);
     setImgError(false);
-    axios.get(`${API}/cocktails/${id}`)
+    axios.get(`${API_BASE_URL}/cocktails/${id}`)
       .then(r => setCocktail(r.data))
       .catch(e => { console.error("Erreur chargement cocktail:", e); setCocktail(null); })
       .finally(() => setLoading(false));
+    axios.get(`${API_BASE_URL}/cocktails/${id}/ratings`)
+      .then(r => setRatings(r.data))
+      .catch(() => {});
     // Config paiement
-    axios.get(`${API}/payments/config`).then(r => setPayConfig(r.data)).catch(() => {});
+    axios.get(`${API_BASE_URL}/payments/config`).then(r => setPayConfig(r.data)).catch(() => {});
   }, [id]);
 
   useEffect(() => {
     if (!user?.id) return;
-    axios.get(`${API}/payments/balance/${user.id}`)
+    axios.get(`${API_BASE_URL}/payments/balance/${user.id}`)
       .then(r => setBalance(r.data.balance))
       .catch(() => {});
   }, [user]);
@@ -196,8 +243,6 @@ export default function CocktailPage() {
     // 🔒 VERROU 1 : Vérifier si un utilisateur est connecté
     if (!user) {
       toast("🚫 Veuillez scanner votre badge pour commander", 'error');
-      // Optionnel : rediriger vers la home pour qu'ils badgent
-      // navigate('/'); 
       return;
     }
 
@@ -223,7 +268,7 @@ export default function CocktailPage() {
       if (cocktail.cost_price != null)  params.cost_price  = cocktail.cost_price;
       if (cocktail.sale_price != null)  params.sale_price  = cocktail.sale_price;
 
-      const res   = await axios.post(`${API}/cocktails/${cocktail.id}/pour`, null, { params });
+      const res   = await axios.post(`${API_BASE_URL}/cocktails/${cocktail.id}/pour`, null, { params });
       const temps = Math.round(res.data.estimated_time ?? 0);
 
       // Mettre à jour le solde affiché
@@ -252,6 +297,23 @@ export default function CocktailPage() {
       toast(`❌ ${msg}`, 'error');
     } finally {
       setIsPouring(false);
+    }
+  };
+
+  // 🆕 Mettre en file d'attente
+  const handleQueue = async () => {
+    if (!user) { toast("🚫 Scannez votre badge pour commander", 'error'); return; }
+    setIsQueuing(true);
+    try {
+      await axios.post(`${API_BASE_URL}/queue`, { user_id: user.id, recipe_id: cocktail.id });
+      setQueuedOk(true);
+      toast("✅ Ajouté en file d'attente ! Suivez votre position sur /queue", 'success', 6000);
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === 'object' ? detail?.message : (detail || 'Erreur');
+      toast(`❌ ${msg}`, 'error');
+    } finally {
+      setIsQueuing(false);
     }
   };
 
@@ -313,7 +375,7 @@ export default function CocktailPage() {
           className="absolute top-6 right-6 z-50 p-4 rounded-full bg-black/40
                      backdrop-blur-xl border border-white/10 hover:bg-white/10
                      transition-all hover:scale-110 active:scale-90">
-          <Heart size={32} className={`transition-all duration-300 ${isFav ? 'fill-red-500 text-red-500' : 'text-white'}`} />
+          <Heart size={32} className={`transition-all duration-300 ${isFav ? 'fill-red-500 text-red-500' : 'text-white scale-100'}active:scale-150`} />
         </button>
         <div className="relative z-10 w-full h-full flex items-center justify-center p-8">
           <img
@@ -338,6 +400,13 @@ export default function CocktailPage() {
                            bg-gradient-to-r from-white to-gray-500 mb-2">
               {cocktail.name}
             </h1>
+            <StarDisplay average={ratings?.average} count={ratings?.count} />
+            {/* Description */}
+            {cocktail.description && (
+              <p className="text-gray-400 text-sm leading-relaxed mt-3">
+                {cocktail.description}
+              </p>
+            )}
           </div>
 
           {/* Badges texte */}
@@ -400,6 +469,9 @@ export default function CocktailPage() {
           {/* Prix de revient cliquable */}
           <CostBreakdown cocktail={cocktail} />
 
+          {/* Instruction de mélange */}
+          <MixingInstruction method={cocktail.mixing_method} />
+
           {/* Temps + volume */}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-white/5 p-4 rounded-xl flex items-center gap-3 border border-white/5">
@@ -418,8 +490,9 @@ export default function CocktailPage() {
             </div>
           </div>
 
-          {/* Bouton commander */}
-          <div className="pt-4">
+          {/* Boutons d'action */}
+          <div className="pt-4 space-y-3">
+            {/* Bouton commander direct */}
             <button
               onClick={handleOrder}
               disabled={isPouring || (user && !cocktail.compatible_with_stock)}
@@ -446,6 +519,28 @@ export default function CocktailPage() {
                 <><Play fill="currentColor" /> LANCER LA PRÉPARATION</>
               )}
             </button>
+
+
+            {/* 🆕 Bouton file d'attente */}
+            {user && cocktail.compatible_with_stock && !isPouring && (
+              <button
+                onClick={handleQueue}
+                disabled={isQueuing || queuedOk}
+                className={`w-full py-4 rounded-xl font-bold text-white
+                            flex items-center justify-center gap-3 transition-all
+                            ${queuedOk
+                              ? 'bg-emerald-600/40 text-emerald-300 cursor-default border border-emerald-500/30'
+                              : 'bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95'}`}
+              >
+                {isQueuing ? (
+                  <><Loader2 className="animate-spin" /> AJOUT EN COURS…</>
+                ) : queuedOk ? (
+                  <><CheckCircle className="text-emerald-400" /> DANS LA FILE ✓</>
+                ) : (
+                  <><Users size={20} /> METTRE EN FILE D'ATTENTE</>
+                )}
+              </button>
+            )}
             
             {!user && (
               <p className="text-center text-xs text-violet-400/60 mt-3 animate-pulse">

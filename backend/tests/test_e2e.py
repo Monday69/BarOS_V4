@@ -15,7 +15,7 @@ Simule une soirée complète :
   10. Lab custom (création + préparation)
 
 Lancer avec : python -m backend.tests.test_e2e
-Prérequis   : API démarrée sur localhost:8000 + seed_data lancé
+Prérequis   : API démarrée sur localhost.1.12:8000 + seed_data lancé
 """
 import requests
 import json

@@ -13,8 +13,6 @@ class Ingredient(Base):
     id                = Column(Integer, primary_key=True, index=True)
     name              = Column(String, unique=True, index=True)
     type              = Column(String)
-
-    # Scanner & Nutrition
     barcode           = Column(String, nullable=True)
     brand             = Column(String, nullable=True)
     image_url         = Column(String, nullable=True)
@@ -22,13 +20,7 @@ class Ingredient(Base):
     density           = Column(Float,   default=1.0)
     sugar_g_per_100ml = Column(Float,   default=0.0)
     kcal_per_100ml    = Column(Float,   default=0.0)
-
-    # Prix d'achat de la bouteille — utilisé pour calculer le coût de revient
-    # Stocké en €/L pour être indépendant du format de bouteille (75cl, 1L…).
-    # Règle de trois dans _recipe_nutrition : cost = price_per_liter * volume_ml / 1000
     purchase_price_per_liter = Column(Float, nullable=True, default=None)
-
-    # Hardware
     current_volume_ml = Column(Float,   default=0.0)
     max_volume_ml     = Column(Float,   default=1000.0)
     pump_id           = Column(Integer, nullable=True)
@@ -36,6 +28,23 @@ class Ingredient(Base):
 
     recipe_ingredients = relationship("RecipeIngredient", back_populates="ingredient")
     pour_steps         = relationship("PourStep",         back_populates="ingredient")
+    reserve            = relationship("StockReserve",     back_populates="ingredient", uselist=False)
+
+
+# --- 1b. STOCK ARRIÈRE-BOUTIQUE ---
+
+class StockReserve(Base):
+    __tablename__ = "stock_reserves"
+
+    id                 = Column(Integer, primary_key=True, index=True)
+    ingredient_id      = Column(Integer, ForeignKey("ingredients.id"), unique=True, nullable=False)
+    reserve_ml         = Column(Float, default=0.0,    nullable=False)
+    bottle_size_ml     = Column(Float, default=750.0,  nullable=False)
+    alert_threshold_ml = Column(Float, default=1500.0, nullable=False)
+    notes              = Column(Text,  nullable=True)
+    updated_at         = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    ingredient = relationship("Ingredient", back_populates="reserve")
 
 
 # --- 2. RECETTES (COCKTAILS) ---
@@ -50,6 +59,7 @@ class Recipe(Base):
     image_url    = Column(String,  nullable=True)
     price        = Column(Float,   default=0.0)
     is_available = Column(Boolean, default=True)
+    mixing_method  = Column(String,  nullable=True)
 
     recipe_ingredients = relationship("RecipeIngredient", back_populates="recipe",   cascade="all, delete-orphan")
     pour_sequences     = relationship("PourSequence",     back_populates="recipe")
@@ -86,6 +96,8 @@ class PourSequence(Base):
     recipe = relationship("Recipe",      back_populates="pour_sequences")
     steps  = relationship("PourStep",    back_populates="sequence", cascade="all, delete-orphan")
     logs   = relationship("SequenceLog", back_populates="sequence", cascade="all, delete-orphan")
+    # [NOUVEAU] back-ref 1:1 vers l'OrderHistory créée pour cette séquence
+    order_history = relationship("OrderHistory", back_populates="sequence", uselist=False)
 
 
 class PourStep(Base):
@@ -139,40 +151,50 @@ class ScannedProduct(Base):
 class User(Base):
     __tablename__ = "users"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    card_uid    = Column(String,  unique=True, index=True)
-    name        = Column(String)
-    gender      = Column(String,  nullable=True)
-    weight_kg   = Column(Float,   nullable=True)
-    age         = Column(Integer, nullable=True)
-    preferences = Column(JSON,    default={})
-    created_at  = Column(DateTime(timezone=True), server_default=func.now())
-    is_admin    = Column(Boolean, default=False, nullable=False)
-    balance     = Column(Float,   default=0.0,   nullable=False)  # solde en €
+    id               = Column(Integer, primary_key=True, index=True)
+    card_uid         = Column(String,  unique=True, index=True)
+    name             = Column(String)
+    gender           = Column(String,  nullable=True)
+    weight_kg        = Column(Float,   nullable=True)
+    age              = Column(Integer, nullable=True)
+    preferences      = Column(JSON,    default={})
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+    is_admin         = Column(Boolean,  default=False,  nullable=False)
+    balance          = Column(Float,    default=0.0,    nullable=False)
+    pin_hash         = Column(String,   nullable=True)
+    pin_attempts     = Column(Integer,  default=0,      nullable=False)
+    pin_locked_until = Column(DateTime(timezone=True),  nullable=True)
 
-    history      = relationship("OrderHistory",      back_populates="user")
-    favorites    = relationship("UserFavorite",      back_populates="user")
-    transactions = relationship("PaymentTransaction", back_populates="user")
+    history           = relationship("OrderHistory",       back_populates="user")
+    favorites         = relationship("UserFavorite",       back_populates="user")
+    transactions      = relationship("PaymentTransaction", back_populates="user")
+    queue_entries     = relationship("QueueEntry",         back_populates="user")
+    push_subscription = relationship("PushSubscription",   back_populates="user", uselist=False)
 
 
 class OrderHistory(Base):
     __tablename__ = "order_history"
 
-    id        = Column(Integer, primary_key=True, index=True)
-    user_id   = Column(Integer, ForeignKey("users.id"))
-    recipe_id = Column(Integer, ForeignKey("recipes.id"))
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    rating    = Column(Integer, nullable=True)
-    comment   = Column(Text,    nullable=True)
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"))
+    recipe_id  = Column(Integer, ForeignKey("recipes.id"))
+    # [NOUVEAU] FK 1:1 vers la séquence qui a produit cette commande.
+    # nullable=True → rétrocompatible avec les lignes existantes (pas de migration bloquante).
+    # unique=True   → une séquence ne peut être liée qu'à une seule commande.
+    sequence_id = Column(Integer, ForeignKey("pour_sequences.id"), nullable=True, unique=True)
+    timestamp  = Column(DateTime(timezone=True), server_default=func.now())
+    rating     = Column(Integer, nullable=True)
+    comment    = Column(Text,    nullable=True)
+    cost_price = Column(Float,   nullable=True, default=None)
+    sale_price = Column(Float,   nullable=True, default=None)
+    # [NOUVEAU] Flag idempotence remboursement.
+    # Mis à True dans la même transaction que le crédit solde → impossible de rembourser deux fois.
+    refunded   = Column(Boolean, default=False, nullable=False)
 
-    # Snapshot du coût de revient au moment de la commande.
-    # Stocké ici pour que l'historique reste cohérent même si le prix
-    # de la bouteille change plus tard (ex: promo, nouvelle marque).
-    cost_price = Column(Float, nullable=True, default=None)
-    sale_price = Column(Float, nullable=True, default=None)  # prix débité au moment de la commande
-
-    user   = relationship("User",   back_populates="history")
-    recipe = relationship("Recipe", back_populates="history")
+    user     = relationship("User",         back_populates="history")
+    recipe   = relationship("Recipe",       back_populates="history")
+    # [NOUVEAU] back-ref vers PourSequence
+    sequence = relationship("PourSequence", back_populates="order_history")
 
 
 class UserFavorite(Base):
@@ -188,20 +210,68 @@ class UserFavorite(Base):
 
 
 class PaymentTransaction(Base):
-    """
-    Historique de toutes les transactions Stripe et recharges manuelles.
-    Permet l'audit complet et la réconciliation comptable.
-    """
     __tablename__ = "payment_transactions"
 
-    id                 = Column(Integer, primary_key=True, index=True)
-    user_id            = Column(Integer, ForeignKey("users.id"), nullable=False)
-    amount             = Column(Float,   nullable=False)               # montant en €
-    type               = Column(String,  nullable=False)               # "stripe" | "manual" | "debit"
-    status             = Column(String,  default="pending")            # "pending" | "completed" | "failed"
-    stripe_session_id  = Column(String,  nullable=True, unique=True)   # Checkout Session ID
-    stripe_payment_id  = Column(String,  nullable=True)                # PaymentIntent ID
-    description        = Column(String,  nullable=True)
-    created_at         = Column(DateTime(timezone=True), server_default=func.now())
+    id                = Column(Integer, primary_key=True, index=True)
+    user_id           = Column(Integer, ForeignKey("users.id"), nullable=False)
+    amount            = Column(Float,   nullable=False)
+    type              = Column(String,  nullable=False)
+    status            = Column(String,  default="pending")
+    stripe_session_id = Column(String,  nullable=True, unique=True)
+    stripe_payment_id = Column(String,  nullable=True)
+    description       = Column(String,  nullable=True)
+    created_at        = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="transactions")
+
+
+# --- 7. FILE D'ATTENTE ---
+
+class QueueEntry(Base):
+    """
+    Une entrée dans la file d'attente.
+    Statuts : waiting → ready → confirmed → done | cancelled
+      waiting   : en attente, pas encore son tour
+      ready     : la machine est libre, c'est son tour → notif PWA envoyée
+      confirmed : le user a validé avec le code affiché sur la machine
+      done      : cocktail préparé
+      cancelled : annulé par le user ou l'admin
+    """
+    __tablename__ = "queue_entries"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    user_id      = Column(Integer, ForeignKey("users.id"), nullable=False)
+    recipe_id    = Column(Integer, ForeignKey("recipes.id"), nullable=False)
+    status       = Column(String,  default="waiting", nullable=False)
+    position     = Column(Integer, nullable=True)
+    confirm_code = Column(String,  nullable=True)
+    cost_price   = Column(Float,   nullable=True)
+    sale_price   = Column(Float,   nullable=True)
+    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+    ready_at     = Column(DateTime(timezone=True), nullable=True)
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    done_at      = Column(DateTime(timezone=True), nullable=True)
+
+    user   = relationship("User",   back_populates="queue_entries")
+    recipe = relationship("Recipe")
+
+
+# --- 8. PUSH SUBSCRIPTIONS (PWA) ---
+
+class PushSubscription(Base):
+    """
+    Subscription WebPush PWA d'un user.
+    Stocke le endpoint + clés VAPID pour envoyer des notifications.
+    Un user = une subscription (upsert).
+    """
+    __tablename__ = "push_subscriptions"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    endpoint   = Column(Text,   nullable=False)
+    p256dh     = Column(Text,   nullable=False)
+    auth       = Column(Text,   nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    user = relationship("User", back_populates="push_subscription")

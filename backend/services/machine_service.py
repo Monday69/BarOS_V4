@@ -1,26 +1,28 @@
 """
-BarOS V4 - Service Machine (Gestion des Pompes)
+BarOS V4 - Service Machine
 Chemin : backend/services/machine_service.py
-
-Corrections v2 :
-  - Ingredient.pump_id != None → Ingredient.pump_id.is_not(None)
-    Le comparateur != None génère un SAWarning en SQLAlchemy 2.x
-    (comparaison Python avec None au lieu du SQL IS NOT NULL).
-  - apply_config : `raise e` → `raise` (re-raise sans perdre le traceback)
 """
 from sqlalchemy.orm import Session
-from backend.models import Ingredient
+from backend.models import Ingredient, PourSequence
 
-# Seuils d'alerte (% du volume max)
-THRESHOLD_CRITICAL = 10   # < 10% → critique (rouge)
-THRESHOLD_WARNING  = 25   # < 25% → attention (orange)
+THRESHOLD_CRITICAL = 10
+THRESHOLD_WARNING  = 25
 
 
 class MachineService:
 
+    # ── Détection machine occupée ─────────────────────────────────────────────
+    def is_machine_busy(self, db: Session) -> bool:
+        """
+        True si une PourSequence PENDING ou IN_PROGRESS existe.
+        Utilisé par l'auto-caller pour savoir quand appeler le suivant.
+        """
+        return db.query(PourSequence).filter(
+            PourSequence.status.in_(["PENDING", "IN_PROGRESS"])
+        ).first() is not None
+
     # ── État complet ──────────────────────────────────────────────────────────
     async def get_full_status(self, db: Session) -> dict:
-        # ✅ Fix : is_not(None) → SQL IS NOT NULL (SQLAlchemy 2.x)
         assigned = db.query(Ingredient).filter(
             Ingredient.pump_id.is_not(None)
         ).all()
@@ -40,12 +42,13 @@ class MachineService:
             "maintenance_needed": False,
             "slots":              slots_data,
             "stock_alerts":       self.get_stock_alerts(db),
+            "is_busy":            self.is_machine_busy(db),
         }
 
     # ── Alertes stocks ────────────────────────────────────────────────────────
     def get_stock_alerts(self, db: Session) -> dict:
         ingredients = db.query(Ingredient).filter(
-            Ingredient.pump_id.is_not(None),       # ✅ Fix : is_not(None)
+            Ingredient.pump_id.is_not(None),
             Ingredient.is_available == True,
         ).all()
 
@@ -102,7 +105,6 @@ class MachineService:
     async def apply_config(self, slots: dict, db: Session) -> dict:
         print(f"[Machine] Sauvegarde configuration : {slots}")
         try:
-            # Désassigner toutes les pompes
             db.query(Ingredient).update({Ingredient.pump_id: None})
 
             for pump_str, data in slots.items():
@@ -115,8 +117,8 @@ class MachineService:
                     Ingredient.name == ing_name
                 ).first()
                 if ingredient:
-                    ingredient.pump_id    = int(pump_str)
-                    ingredient.is_available = True   # ✅ Fix : assigner une pompe rend l'ingrédient disponible
+                    ingredient.pump_id      = int(pump_str)
+                    ingredient.is_available = True
                     print(f"   OK  Pompe {pump_str} → {ing_name}")
                 else:
                     print(f"   WARN Ingrédient inconnu : {ing_name}")
@@ -126,8 +128,6 @@ class MachineService:
 
         except Exception:
             db.rollback()
-            # ✅ Fix : `raise` sans argument — conserve le traceback original.
-            # `raise e` crée un nouveau traceback qui masque l'origine réelle.
             raise
 
     async def validate_config(self, slots: dict) -> dict:

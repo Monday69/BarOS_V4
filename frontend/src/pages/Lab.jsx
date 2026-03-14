@@ -6,8 +6,7 @@ import {
   AlertTriangle, ChevronDown, Send, Euro
 } from 'lucide-react';
 import { useUser } from '../context/UserContext';
-
-const API = 'http://localhost:8000/api';
+import { API_BASE_URL } from '../apiConfig';
 
 // ── Helpers nutrition & Prix ──────────────────────────────────────────────────
 function calcNutrition(steps, ingredientMap) {
@@ -107,7 +106,7 @@ const Lab = () => {
   const [saveLoading, setSaveLoading]     = useState(false);
 
   useEffect(() => {
-    axios.get(`${API}/ingredients?limit=100`)
+    axios.get(`${API_BASE_URL}/ingredients?limit=100`)
       .then(res => {
         const available = res.data.filter(i => i.pump_id !== null && i.is_available);
         setIngredients(available);
@@ -148,7 +147,7 @@ const Lab = () => {
     
     setPouring(true);
     try {
-      const recipeRes = await axios.post(`${API}/cocktails/custom`, {
+      const recipeRes = await axios.post(`${API_BASE_URL}/cocktails/custom`, {
         name:        recipeName || "Cocktail Lab",
         ingredients: steps.map(s => ({
           ingredient_id: s.ingredient_id,
@@ -170,7 +169,7 @@ const Lab = () => {
     if (steps.length === 0)  return toast("Ajoutez au moins un ingrédient", 'error');
     setSaveLoading(true);
     try {
-      await axios.post(`${API}/cocktails/`, {
+      await axios.post(`${API_BASE_URL}/cocktails/`, {
         name:        recipeName,
         description: "Créé depuis le Lab",
         category:    "Custom",
@@ -205,7 +204,7 @@ const Lab = () => {
     setColorLogs([]);
     setColorResult(null);
     try {
-      const res = await axios.post(`${API}/colors/mix`, {
+      const res = await axios.post(`${API_BASE_URL}/colors/mix`, {
         hex_code:  color,
         volume_ml: parseInt(volume)
       });

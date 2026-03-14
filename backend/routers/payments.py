@@ -61,6 +61,8 @@ async def verify_admin(x_admin_token: str = Header(default=None)):
 class CheckoutRequest(BaseModel):
     user_id: int
     amount:  float          # ex: 10.0 (€)
+    success_url: Optional[str] = None  
+    cancel_url:  Optional[str] = None
 
 class ManualRechargeRequest(BaseModel):
     user_id:     int
@@ -140,8 +142,8 @@ async def create_checkout(payload: CheckoutRequest, db: Session = Depends(get_db
                 "tx_id":   str(tx.id),
             },
             client_reference_id=str(payload.user_id),
-            success_url=f"{FRONTEND_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url =f"{FRONTEND_URL}/payment/cancel",
+            success_url=payload.success_url or f"{FRONTEND_URL}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url =payload.cancel_url  or f"{FRONTEND_URL}/payment/cancel",
         )
 
         # Stocker le session_id pour vérification webhook

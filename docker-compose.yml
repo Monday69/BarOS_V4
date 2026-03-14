@@ -1,0 +1,88 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  BarOS V4 — Docker Compose
+#
+#  Services :
+#    backend   → FastAPI  (uvicorn, port 8000 interne)
+#    frontend  → React/Vite build statique servi par Nginx (port 80/443)
+#    nginx     → Reverse proxy : /api/* → backend, /* → frontend
+#
+#  Lancement :
+#    docker-compose up --build          (premier lancement)
+#    docker-compose up -d               (arrière-plan)
+#    docker-compose down                (arrêt propre)
+#
+#  Variables d'environnement : copie .env.example → .env avant de lancer
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Backend FastAPI ─────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: baros_backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DATABASE_URL=sqlite:////data/baros.db
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persistance SQLite et config en dehors du container
+      - baros_data:/data
+      - ./config:/app/config:ro
+    ports:
+      # Exposé uniquement pour le débogage direct — nginx s'en charge en prod
+      - "8000:8000"
+    networks:
+      - baros_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Frontend React (build statique) ────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        # Passe l'URL de l'API au moment du build Vite
+        VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
+    container_name: baros_frontend
+    volumes:
+      - frontend_build:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - baros_net
+    # Pas de port exposé directement — nginx sert les fichiers statiques
+
+  # ── Nginx Reverse Proxy ─────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: baros_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Partage les fichiers buildés depuis le container frontend
+      - frontend_build:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - baros_net
+
+# ── Volumes ─────────────────────────────────────────────────────────────────
+volumes:
+  baros_data:
+    driver: local
+  frontend_build:
+    driver: local
+
+# ── Réseau interne ───────────────────────────────────────────────────────────
+networks:
+  baros_net:
+    driver: bridge

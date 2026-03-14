@@ -24,9 +24,13 @@ from sqlalchemy import text
 
 from backend.database import engine, get_db
 from backend import models
-from backend.routers import cocktails, ingredients, machine, admin, scanner, users, logs, payments, colors
+from backend.routers import cocktails, ingredients, machine, admin, scanner, users, logs, payments, colors, stock, queue, push
 from backend.services.machine_service import MachineService
 from backend.hardware.gpio_manager import GPIOManager, GPIO_AVAILABLE
+from backend.routers.queue import start_auto_caller
+
+from contextlib import asynccontextmanager
+
 
 # ✅ Fix : import depuis utils.cache — supprime la redéfinition locale
 from backend.utils.cache import CacheManager
@@ -42,8 +46,11 @@ cache           = CacheManager()
 # ✅ Fix : origines CORS depuis variable d'environnement
 # En dev  : CORS_ORIGINS non définie → localhost autorisé
 # En prod : CORS_ORIGINS="https://bar.example.com,https://admin.example.com"
-_raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+_default_origins = "http://localhost,http://127.0.0.1,http://localhost:5173"
+_raw_origins = os.getenv("CORS_ORIGINS", _default_origins)
 ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
+logger.info(f"🔒 CORS autorisés pour : {ALLOWED_ORIGINS}")
 
 # ── Lifespan (remplace @app.on_event déprecié depuis FastAPI 0.93) ────────────
 @asynccontextmanager
@@ -62,13 +69,19 @@ async def lifespan(app: FastAPI):
 
     logger.info("🔌 Initialisation du Hardware…")
     GPIOManager.setup()
+
+    # ✅ AJOUT ICI : On réveille le robot qui gère la file d'attente
+    start_auto_caller() 
+    logger.info("🤖 Auto-caller de la file démarré")
+
     logger.info("✅ Système prêt à servir !")
 
-    yield  # ← l'application tourne ici
+    yield  # ← l'application tourne ici (Le serveur est en vie !)
 
-    # Teardown (optionnel — libérer GPIO si nécessaire)
+    # Teardown
     logger.info("🛑 Arrêt de BarOS V4")
     GPIOManager.cleanup()
+
 
 # ── Application ───────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -171,6 +184,10 @@ def get_metrics():
         "cache":     cache.stats(),  # ✅ utilise la méthode stats() de CacheManager v2
     }
 
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok"}
+
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(cocktails.router,   prefix="/api/cocktails",   tags=["cocktails"])
 app.include_router(ingredients.router, prefix="/api/ingredients", tags=["ingredients"])
@@ -181,3 +198,6 @@ app.include_router(users.router,       prefix="/api/users",       tags=["users"]
 app.include_router(logs.router,        prefix="/api/logs",        tags=["logs"])
 app.include_router(payments.router,    prefix="/api/payments",    tags=["payments"])
 app.include_router(colors.router,      prefix="/api/colors",      tags=["colors"])
+app.include_router(stock.router,       prefix="/api/stock",       tags=["stock"])
+app.include_router(queue.router,       prefix="/api/queue",       tags=["queue"])
+app.include_router(push.router,        prefix="/api/push",        tags=["push"])

@@ -1,0 +1,35 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  BarOS V4 — Backend Dockerfile
+#  Python 3.11 slim, uvicorn, dépendances depuis requirements.txt
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM python:3.11-slim
+
+# Variables d'environnement Python
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Dépendances système minimales (pour certaines libs Python natives)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Dépendances Python en premier (layer cacheable)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Code source
+COPY backend/ ./backend/
+COPY config/  ./config/
+
+# Dossier de données (SQLite monté en volume, mais on crée le point de montage)
+RUN mkdir -p /data
+
+# Expose le port uvicorn
+EXPOSE 8000
+
+# Lancement — même commande que start.bat
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

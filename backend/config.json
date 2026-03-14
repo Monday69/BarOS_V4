@@ -16,9 +16,9 @@
   "physics": {
     "max_flow_rate_ml_sec": 10.0
   },
-  "margin_percent": 200.0,
+  "margin_percent": 65.0,
   "payment": {
-    "require_payment": true,
+    "require_payment": false,
     "recharge_amounts": [
       5,
       10,
