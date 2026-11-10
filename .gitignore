@@ -15,3 +15,4 @@ dist/
 *.pem
 *.exe
 .idea/
+frontend/dev-dist/
