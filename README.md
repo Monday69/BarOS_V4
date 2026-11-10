@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" alt="BarOS Logo" width="120" />
-
 # BarOS V4
 
 **Système de bar automatisé piloté par Raspberry Pi**  
