@@ -162,12 +162,12 @@ export default function SmartBar() {
   const favCount = recipes.filter(r => favorites.includes(r.id)).length;
 
   return (
-    <div className="min-h-screen bg-transparent dark:text-white text-gray-900 p-6 pb-24 overflow-y-auto transition-colors duration-300">
+    <div className="min-h-screen bg-transparent dark:text-white text-gray-900 p-0 md:p-6 pb-24 overflow-y-auto transition-colors duration-300">
 
       {/* ── HEADER ── */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
         <div>
-          <h1 className="text-4xl font-bold flex items-center gap-3">
+          <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600">BarOS</span>
             <span className="dark:text-white text-gray-900 transition-colors">Lounge</span>
           </h1>

@@ -38,7 +38,7 @@ const Layout = () => {
         onMouseEnter={() => setExpanded(true)}
         onMouseLeave={() => setExpanded(false)}
         style={{ width: expanded ? '196px' : '72px' }}
-        className={`relative flex flex-col py-8 z-50 overflow-hidden shrink-0
+        className={`relative hidden md:flex flex-col py-8 z-50 overflow-hidden shrink-0
           transition-[width] duration-300 ease-in-out
           ${isDark
             ? 'bg-[#1e1e1e]/50 border-white/5'
@@ -151,7 +151,7 @@ const Layout = () => {
         }`} />
 
         {/* Header utilisateur */}
-        <div className="absolute top-6 right-8 z-50 flex items-center gap-4">
+        <div className="absolute top-4 right-4 md:top-6 md:right-8 z-50 flex items-center gap-4">
           {user ? (
             <div className={`flex items-center gap-3 backdrop-blur-md px-4 py-2 rounded-full border ${
               isDark ? 'bg-black/40 border-white/5' : 'bg-white/60 border-black/5 shadow-sm'
@@ -159,7 +159,7 @@ const Layout = () => {
               <Link to="/profile" className={`text-sm transition-colors cursor-pointer ${
                 isDark ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-black'
               }`}>
-                Salut, <span className={`font-bold ${isDark ? 'text-white' : 'text-purple-600'}`}>{user.name}</span>
+                <span className="hidden sm:inline">Salut, </span><span className={`font-bold ${isDark ? 'text-white' : 'text-purple-600'}`}>{user.name}</span>
               </Link>
               <button
                 onClick={logout}
@@ -179,14 +179,48 @@ const Layout = () => {
                   : 'bg-white border-black/5 hover:bg-gray-50 text-gray-900'
               }`}
             >
-              <User size={18} /> <span>Connexion</span>
+              <User size={18} /> <span className="hidden sm:inline">Connexion</span>
             </button>
           )}
         </div>
 
-        <main className="flex-1 overflow-auto p-8 relative z-10">
+        <main className="flex-1 overflow-auto px-4 pt-20 pb-28 md:p-8 relative z-10">
           <Outlet />
         </main>
+
+        {/* ── NAVIGATION MOBILE (barre du bas) ───────────────────────────── */}
+        <nav className={`md:hidden fixed bottom-0 inset-x-0 z-50 flex items-center gap-1 px-2 py-2
+          overflow-x-auto scrollbar-hide backdrop-blur-md border-t ${
+          isDark ? 'bg-[#141414]/90 border-white/5' : 'bg-white/90 border-black/5'
+        }`}>
+          {navigation.map((item) => {
+            if (item.adminOnly && !user?.is_admin) return null;
+            const isActive = location.pathname === item.path;
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.name}
+                to={item.path}
+                className={`flex-1 min-w-[64px] flex flex-col items-center gap-1 py-1.5 rounded-xl text-[10px] font-semibold
+                  ${isActive
+                    ? 'text-purple-400 bg-purple-500/15'
+                    : isDark ? 'text-gray-500' : 'text-gray-400'}`}
+              >
+                <Icon size={20} strokeWidth={1.5} />
+                <span className="whitespace-nowrap">{item.name}</span>
+              </Link>
+            );
+          })}
+          <button
+            onClick={toggleTheme}
+            className={`min-w-[48px] flex flex-col items-center gap-1 py-1.5 text-[10px] font-semibold ${
+              isDark ? 'text-amber-400' : 'text-purple-500'}`}
+            title="Changer de thème"
+          >
+            {isDark ? <Sun size={20} strokeWidth={1.5} /> : <Moon size={20} strokeWidth={1.5} />}
+            <span>Thème</span>
+          </button>
+        </nav>
       </div>
 
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />

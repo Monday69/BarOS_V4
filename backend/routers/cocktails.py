@@ -321,6 +321,20 @@ async def pour_cocktail(
     if not val["valid"]:
         raise HTTPException(400, val["errors"][0])
 
+    # Sécurité : le prix est toujours recalculé côté serveur.
+    # Les paramètres cost_price / sale_price envoyés par le client sont ignorés.
+    recipe = (
+        db.query(Recipe)
+        .options(joinedload(Recipe.recipe_ingredients).joinedload(RecipeIngredient.ingredient))
+        .filter(Recipe.id == cocktail_id)
+        .first()
+    )
+    if not recipe:
+        raise HTTPException(404, "Cocktail introuvable")
+    _pricing   = _recipe_nutrition(recipe)
+    cost_price = _pricing["cost_price"]
+    sale_price = _pricing["sale_price"]
+
     # 1. Vérifier la machine d'abord
     if _machine_lock.locked():
         raise HTTPException(503, {
@@ -338,6 +352,8 @@ async def pour_cocktail(
 
     # 3. Maintenant on peut calculer le prix final
     final_sale_price = sale_price if _require else None
+    if _require and sale_price is None:
+        raise HTTPException(400, "Prix indisponible pour ce cocktail : renseignez le prix d'achat des ingrédients.")
 
     # 4. Logique de débit
     if _require and sale_price is not None:

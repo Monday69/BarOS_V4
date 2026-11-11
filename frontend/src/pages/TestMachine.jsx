@@ -344,11 +344,20 @@ export default function TestMachine() {
       }
     });
     try {
-      await axios.post(`${API_BASE_URL}/machine/config`, { slots: backendSlots });
+      const adminKey = sessionStorage.getItem('baros_admin_key') || '';
+      await axios.post(
+        `${API_BASE_URL}/machine/config`,
+        { slots: backendSlots },
+        { headers: { 'x-admin-token': adminKey } }
+      );
       toast("Configuration sauvegardée !");
       loadData();
-    } catch {
-      toast("Erreur lors de la sauvegarde", 'error');
+    } catch (err) {
+      if (err?.response?.status === 403) {
+        toast("Clé admin requise : déverrouillez d'abord la page Réglages", 'error');
+      } else {
+        toast("Erreur lors de la sauvegarde", 'error');
+      }
     } finally {
       setSaving(false);
     }

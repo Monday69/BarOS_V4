@@ -157,6 +157,8 @@ const Settings = () => {
 
   const handleUnlock = (key) => {
     adminKeyRef.current = key;
+    // Partagée avec les autres pages admin (Machine 3D…) le temps de la session
+    sessionStorage.setItem('baros_admin_key', key);
     setUnlocked(true);
   };
 
@@ -182,6 +184,7 @@ const SettingsContent = ({ adminKey }) => {
   const [tempVolume, setTempVolume]                 = useState(0);
   // ✅ Nouveau : prix d'achat dans le modal edit
   const [tempPrice, setTempPrice]                   = useState('');
+  const [tempNutri, setTempNutri]                   = useState({ abv: '', kcal: '', sugar: '' });
 
   const [scanningIngredient, setScanningIngredient] = useState(null);
   const [barcodeInput, setBarcodeInput]             = useState('');
@@ -298,6 +301,12 @@ const SettingsContent = ({ adminKey }) => {
     if (!isNaN(parsedPrice) && parsedPrice > 0) {
       body.purchase_price_per_liter = parsedPrice;
     }
+    // Valeurs nutritionnelles saisies à la main (champ vide = inchangé)
+    const nutriFields = { abv: 'alcohol_degree', kcal: 'kcal_per_100ml', sugar: 'sugar_g_per_100ml' };
+    Object.entries(nutriFields).forEach(([k, field]) => {
+      const v = parseFloat(tempNutri[k]);
+      if (!isNaN(v) && v >= 0) body[field] = v;
+    });
     const ok = await adminPut(`${API_BASE_URL}/ingredients/${editingIngredient.id}`, body);
     if (ok) {
       setEditingIngredient(null);
@@ -336,6 +345,11 @@ const SettingsContent = ({ adminKey }) => {
     setTempVolume(ing.current_volume_ml);
     // ✅ Nouveau : pré-remplir le prix si déjà renseigné sur cet ingrédient
     setTempPrice(ing.purchase_price_per_liter != null ? String(ing.purchase_price_per_liter) : '');
+    setTempNutri({
+      abv:   ing.alcohol_degree    ? String(ing.alcohol_degree)    : '',
+      kcal:  ing.kcal_per_100ml    ? String(ing.kcal_per_100ml)    : '',
+      sugar: ing.sugar_g_per_100ml ? String(ing.sugar_g_per_100ml) : '',
+    });
   };
 
   const toggleHistory = async () => {
@@ -615,6 +629,37 @@ const SettingsContent = ({ adminKey }) => {
                 </div>
                 <p className="text-white/20 text-xs mt-1.5">
                   Bouteille 75cl à 9 € → saisir 12.00 &nbsp;(= 9 ÷ 0.75)
+                </p>
+              </div>
+
+              {/* Valeurs nutritionnelles saisies à la main */}
+              <div>
+                <label className="text-white/40 text-xs font-bold uppercase tracking-widest block mb-2">
+                  Valeurs nutritionnelles
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { k: 'abv',   label: 'Degré (°)' },
+                    { k: 'kcal',  label: 'kcal / 100 ml' },
+                    { k: 'sugar', label: 'Sucre g / 100 ml' },
+                  ].map(({ k, label }) => (
+                    <div key={k}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={tempNutri[k]}
+                        onChange={e => setTempNutri(prev => ({ ...prev, [k]: e.target.value }))}
+                        className="w-full bg-black/40 border border-white/10 text-white font-bold
+                                   px-3 py-2.5 rounded-xl text-center focus:outline-none focus:border-orange-500
+                                   transition-colors"
+                      />
+                      <p className="text-white/30 text-[10px] text-center mt-1">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-white/20 text-xs mt-1.5">
+                  Remplies automatiquement par le scan du code-barres, modifiables ici.
                 </p>
               </div>
             </div>

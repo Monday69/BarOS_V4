@@ -67,6 +67,9 @@ class IngredientUpdate(BaseModel):
     # de bouteille (75cl, 1L…). Règle de trois dans _recipe_nutrition :
     # cost = purchase_price_per_liter × volume_ml / 1000
     purchase_price_per_liter: Optional[float] = None
+    # Valeurs nutritionnelles saisissables à la main (sans scan de code-barres)
+    kcal_per_100ml:    Optional[float] = None
+    sugar_g_per_100ml: Optional[float] = None
 
 class IngredientResponse(IngredientBase):
     id:                int

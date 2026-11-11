@@ -16,6 +16,7 @@ import time
 
 from backend.database import get_db
 from backend.services.machine_service import MachineService
+from backend.routers.admin import verify_admin
 
 router = APIRouter()
 machine_service = MachineService()
@@ -81,7 +82,7 @@ def get_machine_busy(db: Session = Depends(get_db)):
     return {"busy": busy}
 
 
-@router.post("/config")
+@router.post("/config", dependencies=[Depends(verify_admin)])
 async def update_machine_config(config: Dict[str, Any], db: Session = Depends(get_db)):
     if "slots" not in config:
         raise HTTPException(status_code=400, detail="Format invalide, 'slots' requis")
