@@ -18,13 +18,19 @@
 
 </div>
 
-![Configuration de la machine en 3D : chaque cuve est assignée à un ingrédient](docs/images/config-3d.jpg)
+<p align="center">
+  <img src="docs/images/machine-3d.webp" alt="Modèle 3D de la machine BarOS" width="380" />
+  <br />
+  <sub>Modèle 3D de la machine · design de <b>Corentin Haverlant</b></sub>
+</p>
+
+> 🛠️ **Statut :** logiciel complet et testé en mode simulation. L'assemblage de la machine physique est en cours ; les photos arriveront ici.
 
 ---
 
 ## 📖 Vue d'ensemble
 
-BarOS est un système embarqué complet qui automatise la préparation de cocktails via une machine à pompes pilotée par Raspberry Pi. Un utilisateur scanne son badge NFC sur la borne, choisit son cocktail sur l'interface web, paie par carte ou solde prépayé — la machine calcule les durées de versement par la physique et dose chaque ingrédient avec précision.
+BarOS est un système embarqué complet qui automatise la préparation de cocktails via une machine à électrovannes pilotée par Raspberry Pi. Un utilisateur scanne son badge NFC sur la borne, choisit son cocktail sur l'interface web, paie par carte ou solde prépayé — la machine calcule les durées de versement par la physique et dose chaque ingrédient avec précision.
 
 > Ce projet couvre l'intégralité de la stack : physique embarquée, backend distribué, interface React 3D, paiement Stripe, file d'attente temps réel et déploiement Docker.
 
@@ -34,7 +40,7 @@ BarOS est un système embarqué complet qui automatise la préparation de cockta
 
 | Domaine | Fonctionnalité |
 |---|---|
-| 🍹 **Machine** | Dosage 12 cuves simultanées, séquencement GPIO, arrêt d'urgence |
+| 🍹 **Machine** | Dosage 12 cuves par électrovannes, séquencement GPIO, arrêt d'urgence |
 | 🧪 **Physique** | Loi de Torricelli analytique, calcul exact de la durée de versement |
 | 💳 **Paiement** | Stripe Checkout, solde prépayé NFC, remboursement automatique en cas d'erreur hardware |
 | 📱 **PWA** | Notifications push WebPush, file d'attente temps réel (WebSocket) |
@@ -80,7 +86,7 @@ BarOS est un système embarqué complet qui automatise la préparation de cockta
                                            ▼
                             ┌─────────────────────────────────────┐
                             │        Raspberry Pi (Hardware)       │
-                            │   12 pompes péristaltiques · NFC    │
+                            │   12 électrovannes · relais · NFC   │
                             │   GPIO 40 pins · Emergency Stop     │
                             └─────────────────────────────────────┘
 ```
@@ -91,10 +97,54 @@ BarOS est un système embarqué complet qui automatise la préparation de cockta
 |---|---|---|
 | Frontend | React 18, Vite, Three.js, Tailwind CSS | Interface utilisateur, visualisation 3D |
 | Backend | FastAPI, SQLAlchemy 2.0, Pydantic | API REST + WebSocket |
-| Hardware | RPi.GPIO, asyncio | Pilotage pompes, NFC |
+| Hardware | RPi.GPIO, asyncio | Pilotage des électrovannes, NFC |
 | Paiement | Stripe Checkout + Webhooks | Transactions sécurisées |
 | Infra | Docker Compose, Nginx | Déploiement, reverse proxy |
 | Tests | Pytest | 35 tests unitaires physique |
+
+---
+
+## ⚡ Électronique
+
+Les ingrédients s'écoulent par gravité depuis 12 cuves. Chaque cuve est fermée par une électrovanne 12 V, ouverte pendant la durée calculée par la loi de Torricelli.
+
+![Schéma de câblage de BarOS](docs/images/schema-electrique.png)
+
+> ⚠️ **Schéma de conception (v0).** Il sera révisé après l'assemblage et les essais de la première version : position du fusible, arrêt d'urgence à verrouillage (NC), alimentation des relais et dimensionnement du 5 V.
+
+| Composant | Rôle | Liaison |
+|---|---|---|
+| Raspberry Pi 4B | Contrôleur et serveur backend | — |
+| 12 électrovannes 12 V | Ouvrent chaque cuve pendant la durée calculée | via relais |
+| 2 modules 8 relais | Commutent les électrovannes (12 relais utilisés) | GPIO |
+| 12 diodes 1N4007 | Protègent contre les surtensions à la coupure des bobines (roue libre) | — |
+| Alimentation 12 V, fusible, arrêt d'urgence | Alimentation des électrovannes ; l'arrêt coupe le 12 V des relais sans éteindre la Pi | — |
+| Convertisseur LM2596 | Abaisse le 12 V en 5 V pour les périphériques | — |
+| Lecteur NFC/RFID PN532 | Identification par badge | I²C (GPIO 2/3) |
+| Lecteur de codes-barres GM65 | Scan des bouteilles pour renseigner les ingrédients | UART (GPIO 14/15) |
+| Cellule de pesée + HX711 | Mesure du poids | GPIO 5/6 |
+| Anneau de LED WS2812B | Retour visuel pendant la préparation | GPIO 18 |
+| Écran tactile Waveshare 7" | Borne de commande | HDMI + USB |
+
+<details>
+<summary>Correspondance électrovanne → relais → GPIO</summary>
+
+| Électrovanne | Relais | GPIO |
+|---|---|---|
+| 1 | Module 2 · K1 | 17 |
+| 2 | Module 2 · K2 | 27 |
+| 3 | Module 2 · K3 | 22 |
+| 4 | Module 2 · K4 | 23 |
+| 5 | Module 2 · K5 | 24 |
+| 6 | Module 2 · K6 | 25 |
+| 7 | Module 1 · K1 | 16 |
+| 8 | Module 1 · K2 | 26 |
+| 9 | Module 1 · K4 | 21 |
+| 10 | Module 1 · K3 | 20 |
+| 11 | Module 2 · K7 | 12 |
+| 12 | Module 2 · K8 | 13 |
+
+</details>
 
 ---
 
@@ -108,7 +158,7 @@ Le débit instantané dépend du niveau de remplissage de la cuve :
 
 $$Q(v) = Q_{max} \cdot \sqrt{\frac{v}{V_{max}}}$$
 
-Avec $Q_{max} = 10\ \text{ml/s}$ (débit calibré sur les pompes physiques).
+Avec $Q_{max} = 10\ \text{ml/s}$ (débit calibré sur les électrovannes).
 
 ### Résolution analytique
 
@@ -148,7 +198,7 @@ TestPerformance            ··  < 1ms/appel garanti
 *Captures réalisées en mode simulation (sans Raspberry Pi), avec les données de démonstration du projet.*
 
 ### Tableau de bord
-État des 12 pompes, taux de succès des préparations et alertes de stock en temps réel.
+État des 12 électrovannes (appelées « pompes » dans l'interface), taux de succès des préparations et alertes de stock en temps réel.
 
 ![Tableau de bord](docs/images/dashboard.jpg)
 
@@ -159,6 +209,8 @@ Interface principale de commande, avec des suggestions basées sur les favoris, 
 
 ### Configuration 3D
 Modèle 3D interactif de la machine (Three.js) pour assigner visuellement les ingrédients aux 12 cuves. Un clic sur un cylindre le sélectionne ; au survol d'un ingrédient dans la liste, la cuve correspondante s'illumine.
+
+![Configuration 3D des cuves](docs/images/config-3d.jpg)
 
 ### Laboratoire et maintenance
 
@@ -215,7 +267,7 @@ docker-compose down -v       # Arrêt + suppression des volumes
 
 ## 💻 Lancement en développement (sans Docker)
 
-Sans Raspberry Pi, le backend passe automatiquement en **mode simulation** : les pompes sont simulées et toute l'interface reste utilisable.
+Sans Raspberry Pi, le backend passe automatiquement en **mode simulation** : les électrovannes sont simulées et toute l'interface reste utilisable.
 
 ```bash
 # Backend (depuis la racine)
@@ -280,7 +332,7 @@ BarOS_V4/
 ├── tests/
 │   └── test_fluid_physics.py    # 35 tests unitaires Pytest
 ├── config/
-│   └── config.json          # Configuration machine (pompes, cuves)
+│   └── config.json          # Configuration machine (électrovannes, cuves)
 ├── docker-compose.yml
 ├── Dockerfile.backend
 ├── Dockerfile.frontend
@@ -311,7 +363,7 @@ Création PourSequence en DB
         │
         ├─ Calcul durées Torricelli par ingrédient
         │
-        ├─ Séquencement GPIO pompes (Phase 2)
+        ├─ Séquencement GPIO électrovannes (Phase 2)
         │         │
         │         ├─ Erreur hardware → Emergency Stop
         │         │                 → Remboursement stock + solde automatique
@@ -328,10 +380,16 @@ Création PourSequence en DB
 
 - **Mutex machine** (`asyncio.Lock`) — une seule séquence de versement à la fois
 - **Remboursement idempotent** — `OrderHistory.refunded` flag atomique, impossible de rembourser deux fois
-- **Emergency stop** — coupe toutes les pompes actives en cas d'exception hardware
+- **Emergency stop** — coupe toutes les électrovannes ouvertes en cas d'exception hardware
 - **Validation Pydantic** — chaque entrée API est strictement typée et validée
 - **Rate limiting** — protection des endpoints sensibles
 - **Admin guard** — routes admin protégées par authentification PIN
+
+---
+
+## 🙏 Crédits
+
+- **Corentin Haverlant** : conception du modèle 3D de la machine.
 
 ---
 
