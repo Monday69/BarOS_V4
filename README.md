@@ -18,6 +18,8 @@
 
 </div>
 
+![Configuration de la machine en 3D : chaque cuve est assignée à un ingrédient](docs/images/config-3d.jpg)
+
 ---
 
 ## 📖 Vue d'ensemble
@@ -143,16 +145,33 @@ TestPerformance            ··  < 1ms/appel garanti
 
 ## 🖥️ Interface
 
-> 📸 *Screenshots et photos de la machine physique à venir*
+*Captures réalisées en mode simulation (sans Raspberry Pi), avec les données de démonstration du projet.*
+
+### Tableau de bord
+État des 12 pompes, taux de succès des préparations et alertes de stock en temps réel.
+
+![Tableau de bord](docs/images/dashboard.jpg)
 
 ### SmartBar
-Interface principale de commande avec suggestions intelligentes basées sur les favoris, les ratings et la disponibilité des ingrédients en temps réel.
+Interface principale de commande, avec des suggestions basées sur les favoris, les notes et la disponibilité des ingrédients en temps réel. Seuls les cocktails réalisables avec les bouteilles connectées sont proposés.
+
+![SmartBar](docs/images/smartbar.jpg)
 
 ### Configuration 3D
-Modèle 3D interactif de la machine permettant d'assigner visuellement les ingrédients aux 12 cuves. Au survol d'un ingrédient dans la liste, la cuve correspondante s'illumine dans le modèle 3D (émissivité GPU).
+Modèle 3D interactif de la machine (Three.js) pour assigner visuellement les ingrédients aux 12 cuves. Un clic sur un cylindre le sélectionne ; au survol d'un ingrédient dans la liste, la cuve correspondante s'illumine.
 
-### Dashboard Admin
-Analytics de revenus, suivi des stocks, alertes critiques, export Excel des données.
+### Laboratoire et maintenance
+
+| Laboratoire : recettes sur mesure | Maintenance : niveaux et prix par cuve |
+|---|---|
+| ![Laboratoire](docs/images/laboratoire.jpg) | ![Maintenance](docs/images/maintenance.jpg) |
+
+Le laboratoire calcule en direct le volume, le degré d'alcool et le prix de vente d'une recette. La page de maintenance suit le niveau de chaque cuve : on y voit les 30 ml de rhum consommés par la préparation de test.
+
+### Identification
+Chaque utilisateur s'identifie avec son badge NFC, puis un code PIN à 6 chiffres.
+
+<img src="docs/images/pin.jpg" alt="Saisie du code PIN" width="480" />
 
 ---
 
@@ -166,12 +185,12 @@ Analytics de revenus, suivi des stocks, alertes critiques, export Excel des donn
 
 ```bash
 # 1. Clone
-git clone https://github.com/matteobombrun/baros-v4.git
-cd baros-v4
+git clone https://github.com/Monday69/BarOS_V4.git
+cd BarOS_V4
 
 # 2. Configuration
 cp .env.example .env
-# Édite .env : renseigne STRIPE_SECRET_KEY et STRIPE_WEBHOOK_SECRET
+# Édite .env : renseigne au minimum BAROS_ADMIN_SECRET (et les clés Stripe pour le paiement)
 
 # 3. Lancement
 docker-compose up --build
@@ -190,6 +209,30 @@ L'application est disponible sur **http://localhost**
 ```bash
 docker-compose down          # Arrêt (données conservées)
 docker-compose down -v       # Arrêt + suppression des volumes
+```
+
+---
+
+## 💻 Lancement en développement (sans Docker)
+
+Sans Raspberry Pi, le backend passe automatiquement en **mode simulation** : les pompes sont simulées et toute l'interface reste utilisable.
+
+```bash
+# Backend (depuis la racine)
+python -m venv venv
+venv\Scripts\activate            # Linux/macOS : source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env              # puis renseigner BAROS_ADMIN_SECRET
+uvicorn backend.main:app --port 8000 --env-file .env
+
+# Données de démonstration (dans un second terminal, backend lancé)
+python -m tools.seed_data
+python -m backend.scripts.import_cocktails --real
+
+# Frontend
+cd frontend
+npm install
+npm run dev                       # http://localhost:5173 (proxy /api vers le backend)
 ```
 
 ---
